@@ -54,7 +54,7 @@ A gRPC-based Command and Control framework for authorized penetration testing an
 ```bash
 # Clone and setup
 git clone https://github.com/projektckmt/silkwire-c2.git
-cd silkwire
+cd silkwire-c2
 make dev-setup
 
 # Build all components
