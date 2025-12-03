@@ -22,7 +22,7 @@ proto:
 
 # Build all components
 .PHONY: build
-build: build-server build-client build-console
+build: build-server build-console
 
 # Build server
 .PHONY: build-server
@@ -34,7 +34,7 @@ build-server:
 .PHONY: build-client
 build-client:
 	@echo "Building C2 client..."
-	go build -o bin/c2-client ./implant
+	go build -C implant -o ../bin/c2-client .
 
 # Build console
 .PHONY: build-console

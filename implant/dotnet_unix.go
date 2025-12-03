@@ -6,7 +6,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	pb "silkwire/proto/c2pb"
+	pb "silkwire/proto"
 )
 
 // ExecuteAssembly is not supported on non-Windows platforms

