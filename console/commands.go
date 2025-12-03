@@ -82,15 +82,16 @@ func (oc *OperatorConsole) SendCommand(implantID string, cmd *pb.CommandMessage)
 		fmt.Printf("%s Executing... ", colorize("[*]", colorBlue))
 
 		// Wait for the command result with progress dots
+		// Increased timeout to 180 seconds (3 minutes) for slow commands
 		resultReq := &pb.CommandResultRequest{
 			CommandId:      resp.CommandId,
-			TimeoutSeconds: 30, // Increased timeout for slower commands
+			TimeoutSeconds: 180,
 		}
 
-		// Show progress while waiting
+		// Show progress while waiting (180 seconds / 0.5 seconds per dot = 360 dots)
 		done := make(chan bool)
 		go func() {
-			for i := 0; i < 60; i++ {
+			for i := 0; i < 360; i++ {
 				select {
 				case <-done:
 					return
@@ -110,9 +111,26 @@ func (oc *OperatorConsole) SendCommand(implantID string, cmd *pb.CommandMessage)
 			return nil
 		}
 
+		// If still not ready after timeout, check database one more time
 		if !resultResp.Ready {
-			fmt.Printf("%s Command timed out or still pending\n", colorize("[*]", colorBlue))
-			return nil
+			fmt.Printf("%s Command still executing, checking database...\n", colorize("[*]", colorBlue))
+
+			// Quick check to see if result arrived in database
+			retryReq := &pb.CommandResultRequest{
+				CommandId:      resp.CommandId,
+				TimeoutSeconds: 5,
+			}
+
+			resultResp, err = oc.client.GetCommandResult(context.Background(), retryReq)
+			if err != nil {
+				fmt.Printf("%s Failed to check result: %v\n", colorize("[*]", colorBlue), err)
+				return nil
+			}
+
+			if !resultResp.Ready {
+				fmt.Printf("%s Command still pending. Command ID: %s\n", colorize("[*]", colorBlue), resp.CommandId)
+				return nil
+			}
 		}
 
 		// Enhanced result display

