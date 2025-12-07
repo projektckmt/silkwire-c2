@@ -25,6 +25,7 @@ service C2Service {
   rpc DeleteSession(SessionDeleteRequest) returns (SessionDeleteResponse);
   rpc SendCommand(SendCommandRequest) returns (SendCommandResponse);
   rpc GetCommandResult(CommandResultRequest) returns (CommandResultResponse);
+  rpc ListCommands(CommandListRequest) returns (CommandListResponse);
 
   // PTY streaming for interactive shells
   rpc PTYStream(stream PTYClientMessage) returns (stream PTYServerMessage);
@@ -489,6 +490,25 @@ message CommandResultResponse {
   string error = 4; // Error message if failed
 }
 
+message CommandListRequest {
+  string implant_id = 1; // Optional filter by implant
+  int32 limit = 2; // Optional limit (default 100)
+}
+
+message CommandInfo {
+  string command_id = 1;
+  string implant_id = 2;
+  string type = 3;
+  string command = 4;
+  string status = 5;
+  int64 created_at = 6;
+  int64 completed_at = 7;
+}
+
+message CommandListResponse {
+  repeated CommandInfo commands = 1;
+}
+
 // Session Event Streaming
 message SessionEventStreamRequest {
   // Empty for now - could add filtering options later
@@ -504,5 +524,6 @@ message SessionEvent {
     SESSION_ESTABLISHED = 0; // New session created
     SESSION_LOST = 1;        // Session disconnected/timed out
     SESSION_UPDATED = 2;     // Session information updated
+    TASK_COMPLETED = 3;      // Long-running task completed
   }
 }

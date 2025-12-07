@@ -669,6 +669,15 @@ func (oc *OperatorConsole) handleSessionEvent(event *pb.SessionEvent) {
 		}
 		oc.pendingNotifications = append(oc.pendingNotifications, notification)
 		oc.notifMux.Unlock()
+
+	case pb.SessionEvent_TASK_COMPLETED:
+		// Task completed notification
+		notification = fmt.Sprintf("Task Completed: %s", event.Message)
+		// Add to pending notifications
+		oc.notifMux.Lock()
+		oc.pendingNotifications = append(oc.pendingNotifications, notification)
+		oc.notifMux.Unlock()
+
 	default:
 		return // Unknown event type
 	}

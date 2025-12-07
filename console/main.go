@@ -1622,6 +1622,27 @@ func createSessionMenuCommands() *cobra.Command {
 	}
 	sessionRootCmd.AddCommand(pingCmd)
 
+	// jobs command
+	jobsCmd := &cobra.Command{
+		Use:   "jobs",
+		Short: "List background jobs",
+		Run: func(cmd *cobra.Command, args []string) {
+			ocGlobal.executeSessionCommand(currentSessionID, "jobs")
+		},
+	}
+	sessionRootCmd.AddCommand(jobsCmd)
+
+	// results command
+	resultsCmd := &cobra.Command{
+		Use:   "results <job_id>",
+		Short: "Get job results",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			ocGlobal.executeSessionCommand(currentSessionID, "results "+args[0])
+		},
+	}
+	sessionRootCmd.AddCommand(resultsCmd)
+
 	// ifconfig command
 	ifconfigCmd := &cobra.Command{
 		Use:   "ifconfig",

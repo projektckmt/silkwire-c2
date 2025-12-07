@@ -38,7 +38,7 @@ func NewDatabase(dbPath string) (*Database, error) {
 	}
 
 	database := &Database{db: db}
-	
+
 	// Populate codenames for existing sessions that don't have them
 	err = database.populateCodenames()
 	if err != nil {
@@ -51,7 +51,7 @@ func NewDatabase(dbPath string) (*Database, error) {
 // Session operations
 func (d *Database) SaveSession(session *Session) error {
 	networkIfacesJSON, _ := json.Marshal(session.NetworkIfaces)
-	
+
 	dbSession := &DBSession{
 		ImplantID:     session.ImplantID,
 		SessionToken:  session.SessionToken,
@@ -146,7 +146,7 @@ func (d *Database) DeleteSession(implantID string) error {
 // Command operations
 func (d *Database) SaveCommand(commandID, implantID, cmdType, command string, args []string, data []byte, timeout int32) error {
 	argsJSON, _ := json.Marshal(args)
-	
+
 	dbCommand := &DBCommand{
 		CommandID: commandID,
 		ImplantID: implantID,
@@ -174,9 +174,21 @@ func (d *Database) GetCommand(commandID string) (*DBCommand, error) {
 	return &dbCommand, nil
 }
 
-func (d *Database) GetCommandsByImplant(implantID string) ([]DBCommand, error) {
+func (d *Database) GetCommandsByImplant(implantID string, limit int) ([]DBCommand, error) {
 	var commands []DBCommand
-	err := d.db.Where("implant_id = ?", implantID).Order("created_at desc").Find(&commands).Error
+	if limit <= 0 {
+		limit = 100
+	}
+	err := d.db.Where("implant_id = ?", implantID).Order("created_at desc").Limit(limit).Find(&commands).Error
+	return commands, err
+}
+
+func (d *Database) GetRecentCommands(limit int) ([]DBCommand, error) {
+	var commands []DBCommand
+	if limit <= 0 {
+		limit = 100
+	}
+	err := d.db.Order("created_at desc").Limit(limit).Find(&commands).Error
 	return commands, err
 }
 
@@ -218,7 +230,7 @@ func (d *Database) GetCommandResult(commandID string) (*CommandResult, error) {
 // Task operations
 func (d *Database) SaveTask(taskID, implantID, taskType, command string, args []string, data []byte, timeout int32) error {
 	argsJSON, _ := json.Marshal(args)
-	
+
 	dbTask := &DBTask{
 		TaskID:    taskID,
 		ImplantID: implantID,
@@ -271,12 +283,12 @@ func (d *Database) UpdateListenerStatus(listenerID string, status string) error 
 	updates := map[string]interface{}{
 		"status": status,
 	}
-	
+
 	if status == "stopped" || status == "failed" {
 		now := time.Now()
 		updates["stopped_at"] = &now
 	}
-	
+
 	return d.db.Model(&DBListener{}).Where("listener_id = ?", listenerID).Updates(updates).Error
 }
 
@@ -309,14 +321,14 @@ func (d *Database) CleanupOldSessions(maxAge time.Duration) error {
 // GetSessionStats returns basic statistics about sessions
 func (d *Database) GetSessionStats() (map[string]int64, error) {
 	stats := make(map[string]int64)
-	
+
 	// Total sessions
 	var total int64
 	if err := d.db.Model(&DBSession{}).Count(&total).Error; err != nil {
 		return nil, err
 	}
 	stats["total"] = total
-	
+
 	// Active sessions (seen in last 10 minutes)
 	var active int64
 	tenMinutesAgo := time.Now().Add(-10 * time.Minute)
@@ -324,7 +336,7 @@ func (d *Database) GetSessionStats() (map[string]int64, error) {
 		return nil, err
 	}
 	stats["active"] = active
-	
+
 	// Commands executed today
 	var commandsToday int64
 	today := time.Now().Truncate(24 * time.Hour)
@@ -332,7 +344,7 @@ func (d *Database) GetSessionStats() (map[string]int64, error) {
 		return nil, err
 	}
 	stats["commands_today"] = commandsToday
-	
+
 	return stats, nil
 }
 
@@ -385,4 +397,3 @@ func (d *Database) GetAllImplantBuilds() ([]DBImplantBuild, error) {
 func (d *Database) DeleteImplantBuild(buildID string) error {
 	return d.db.Where("build_id = ?", buildID).Delete(&DBImplantBuild{}).Error
 }
-

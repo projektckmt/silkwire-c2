@@ -142,6 +142,28 @@ func (oc *OperatorConsole) SendCommand(implantID string, cmd *pb.CommandMessage)
 	return fmt.Errorf("no connection to server available")
 }
 
+// SendCommandAsync sends a command and returns immediately with the command ID
+func (oc *OperatorConsole) SendCommandAsync(implantID string, cmd *pb.CommandMessage) (string, error) {
+	if oc.client != nil {
+		req := &pb.SendCommandRequest{
+			ImplantId: implantID,
+			Command:   cmd,
+		}
+
+		resp, err := oc.client.SendCommand(context.Background(), req)
+		if err != nil {
+			return "", fmt.Errorf("failed to send command: %v", err)
+		}
+
+		if !resp.Success {
+			return "", fmt.Errorf("command failed: %s", resp.Message)
+		}
+
+		return resp.CommandId, nil
+	}
+	return "", fmt.Errorf("no connection to server available")
+}
+
 // handleSessionCommand processes and executes session-specific commands
 func (oc *OperatorConsole) handleSessionCommand(implantID, input string) {
 	// Use shellquote.Split to properly handle quoted strings
@@ -289,13 +311,24 @@ func (oc *OperatorConsole) handleSessionCommand(implantID, input string) {
 			BannerGrab:  *banner,
 		}
 
-		// We need to pass this to SendCommand, but currently it only takes CommandMessage.
-		// We need to modify the CommandMessage construction below to include these options.
-		// For now, we'll serialize it or attach it to the command struct if we modified the proto (which we did).
+		// Async execution for scan
+		cmd := &pb.CommandMessage{
+			CommandId:          generateCommandID(),
+			Type:               cmdType,
+			Command:            cmdStr,
+			Args:               nil, // Args handled via options
+			Timeout:            int32(*timeout),
+			NetworkScanOptions: scanOptions,
+		}
 
-		// Store options in a temporary variable to be used when creating the command message
-		// This requires a slight refactor of how we construct the message at the end of this function
-		// For now, we will attach it to the command message later.
+		cmdID, err := oc.SendCommandAsync(implantID, cmd)
+		if err != nil {
+			fmt.Printf("%s Failed to start scan: %v\n", colorize("[!]", colorRed), err)
+		} else {
+			fmt.Printf("%s Scan started in background. Command ID: %s\n", colorize("[+]", colorGreen), cmdID)
+			fmt.Printf("%s Use 'jobs' to see status and 'results %s' to view output when complete.\n", colorize("[*]", colorBlue), cmdID)
+		}
+		return
 
 	case "ping":
 		if len(args) == 0 {
@@ -712,6 +745,42 @@ func (oc *OperatorConsole) handleSessionCommand(implantID, input string) {
 		fmt.Printf("%s Creating token for %s\\%s...\n", colorize("[*]", colorBlue), args[0], args[1])
 		cmdType = pb.CommandMessage_TOKEN_MAKE_TOKEN
 		cmdStr = "token-make"
+
+	case "jobs":
+		fmt.Printf("%s Fetching recent commands...\n", colorize("[*]", colorBlue))
+		if oc.client != nil {
+			req := &pb.CommandListRequest{
+				ImplantId: implantID,
+				Limit:     20,
+			}
+			resp, err := oc.client.ListCommands(context.Background(), req)
+			if err != nil {
+				fmt.Printf("%s Failed to list commands: %v\n", colorize("[!]", colorRed), err)
+			} else {
+				printJobsTable(resp.Commands)
+			}
+		}
+		return
+
+	case "results":
+		if len(args) == 0 {
+			fmt.Printf("%s Usage: results <command_id>\n", colorize("[*]", colorBlue))
+			return
+		}
+		cmdID := args[0]
+		if oc.client != nil {
+			req := &pb.CommandResultRequest{
+				CommandId:      cmdID,
+				TimeoutSeconds: 5,
+			}
+			resp, err := oc.client.GetCommandResult(context.Background(), req)
+			if err != nil {
+				fmt.Printf("%s Failed to get result: %v\n", colorize("[!]", colorRed), err)
+			} else {
+				displayCommandResult(resp)
+			}
+		}
+		return
 
 	default:
 		cmdType = pb.CommandMessage_SHELL
