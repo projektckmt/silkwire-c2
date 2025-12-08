@@ -255,6 +255,15 @@ func (d *Database) GetPendingTasksByImplant(implantID string) ([]DBTask, error) 
 	return tasks, err
 }
 
+func (d *Database) GetTaskByID(taskID string) (*DBTask, error) {
+	var task DBTask
+	err := d.db.Where("task_id = ?", taskID).First(&task).Error
+	if err != nil {
+		return nil, err
+	}
+	return &task, nil
+}
+
 // Listener operations
 func (d *Database) SaveListener(listenerID, address, listenerType, certFile, keyFile, caFile string) error {
 	dbListener := &DBListener{

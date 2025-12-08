@@ -19,6 +19,7 @@ import (
 // CAManager handles certificate authority operations similar to Sliver
 type CAManager struct {
 	caPath     string
+	certsPath  string // Directory for persistent server certificates
 	caCert     *x509.Certificate
 	caKey      *ecdsa.PrivateKey
 	certPool   *x509.CertPool
@@ -29,6 +30,7 @@ type CAManager struct {
 func NewCAManager(caPath, serverAddr string) (*CAManager, error) {
 	cm := &CAManager{
 		caPath:     caPath,
+		certsPath:  filepath.Join(caPath, "certs"),
 		serverAddr: serverAddr,
 		certPool:   x509.NewCertPool(),
 	}
@@ -36,6 +38,11 @@ func NewCAManager(caPath, serverAddr string) (*CAManager, error) {
 	// Ensure CA directory exists
 	if err := os.MkdirAll(caPath, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create CA directory: %v", err)
+	}
+
+	// Ensure certs directory exists for persistent server certificates
+	if err := os.MkdirAll(cm.certsPath, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create certs directory: %v", err)
 	}
 
 	// Load or generate CA
@@ -358,6 +365,138 @@ func (cm *CAManager) GenerateServerCertificate(address string) (tls.Certificate,
 	cert.Leaf, _ = x509.ParseCertificate(serverCertDER)
 
 	return cert, nil
+}
+
+// LoadOrGenerateServerCertificate loads an existing server certificate or generates and saves a new one
+func (cm *CAManager) LoadOrGenerateServerCertificate(name, address string) (tls.Certificate, error) {
+	certPath := filepath.Join(cm.certsPath, name+".crt")
+	keyPath := filepath.Join(cm.certsPath, name+".key")
+
+	// Check if certificate files exist
+	if _, err := os.Stat(certPath); err == nil {
+		if _, err := os.Stat(keyPath); err == nil {
+			// Both files exist, try to load them
+			cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+			if err == nil {
+				// Parse certificate to check expiry
+				if len(cert.Certificate) > 0 {
+					x509Cert, err := x509.ParseCertificate(cert.Certificate[0])
+					if err == nil {
+						// Check if certificate is still valid (not expired)
+						if time.Now().Before(x509Cert.NotAfter) {
+							cert.Leaf = x509Cert
+							return cert, nil
+						}
+						// Certificate expired, will regenerate below
+					}
+				}
+			}
+			// Failed to load or expired, will regenerate below
+		}
+	}
+
+	// Generate new CA-signed server certificate
+	cert, certPEM, keyPEM, err := cm.generateServerCertificateWithPEM(address)
+	if err != nil {
+		return tls.Certificate{}, fmt.Errorf("failed to generate server certificate: %v", err)
+	}
+
+	// Save certificate to disk
+	if err := os.WriteFile(certPath, certPEM, 0644); err != nil {
+		return tls.Certificate{}, fmt.Errorf("failed to save server certificate: %v", err)
+	}
+
+	// Save private key to disk with restricted permissions
+	if err := os.WriteFile(keyPath, keyPEM, 0600); err != nil {
+		return tls.Certificate{}, fmt.Errorf("failed to save server private key: %v", err)
+	}
+
+	return cert, nil
+}
+
+// generateServerCertificateWithPEM creates a CA-signed server certificate and returns both the TLS cert and PEM data
+func (cm *CAManager) generateServerCertificateWithPEM(address string) (tls.Certificate, []byte, []byte, error) {
+	// Generate ECDSA private key for server
+	serverKey, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	if err != nil {
+		return tls.Certificate{}, nil, nil, fmt.Errorf("failed to generate server private key: %v", err)
+	}
+
+	// Parse address to get host
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		// If address doesn't have port, use it as host
+		host = address
+	}
+	if host == "" {
+		host = "localhost"
+	}
+
+	// Create server certificate template
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
+	if err != nil {
+		return tls.Certificate{}, nil, nil, fmt.Errorf("failed to generate serial number: %v", err)
+	}
+
+	template := &x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			CommonName:   host,
+			Organization: []string{"Silkwire C2 Server"},
+		},
+		NotBefore:             time.Now().Add(-1 * time.Hour),
+		NotAfter:              time.Now().Add(365 * 24 * time.Hour), // 1 year
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+		IsCA:                  false,
+	}
+
+	// Add IP and DNS SANs
+	if ip := net.ParseIP(host); ip != nil {
+		template.IPAddresses = []net.IP{ip}
+	} else {
+		template.DNSNames = []string{host}
+	}
+
+	// Always add localhost variants
+	template.DNSNames = append(template.DNSNames, "localhost")
+	template.IPAddresses = append(template.IPAddresses, net.IPv4(127, 0, 0, 1), net.IPv6loopback)
+
+	// Create server certificate signed by CA
+	serverCertDER, err := x509.CreateCertificate(rand.Reader, template, cm.caCert, &serverKey.PublicKey, cm.caKey)
+	if err != nil {
+		return tls.Certificate{}, nil, nil, fmt.Errorf("failed to create server certificate: %v", err)
+	}
+
+	// Encode certificate to PEM
+	serverCertPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: serverCertDER,
+	})
+
+	// Encode private key to PEM
+	serverKeyBytes, err := x509.MarshalECPrivateKey(serverKey)
+	if err != nil {
+		return tls.Certificate{}, nil, nil, fmt.Errorf("failed to marshal server private key: %v", err)
+	}
+
+	serverKeyPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "EC PRIVATE KEY",
+		Bytes: serverKeyBytes,
+	})
+
+	// Create TLS certificate
+	cert, err := tls.X509KeyPair(serverCertPEM, serverKeyPEM)
+	if err != nil {
+		return tls.Certificate{}, nil, nil, fmt.Errorf("failed to load server certificate: %v", err)
+	}
+
+	// Parse certificate for metadata
+	cert.Leaf, _ = x509.ParseCertificate(serverCertDER)
+
+	return cert, serverCertPEM, serverKeyPEM, nil
 }
 
 // VerifyClientCertificate verifies a client certificate against the CA
