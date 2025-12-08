@@ -489,6 +489,9 @@ func formatTableValue(val interface{}, key string) string {
 		return fmt.Sprintf("%.2f", v)
 	case nil:
 		return colorize("-", colorDarkGray)
+	case []interface{}:
+		// Special handling for arrays (like ports in scan results)
+		return formatArrayValue(v, key)
 	default:
 		str := fmt.Sprintf("%v", v)
 		if shouldTruncate && len(str) > 50 {
@@ -496,6 +499,72 @@ func formatTableValue(val interface{}, key string) string {
 		}
 		return str
 	}
+}
+
+// formatArrayValue formats an array value for table display
+func formatArrayValue(arr []interface{}, key string) string {
+	if len(arr) == 0 {
+		return colorize("-", colorDarkGray)
+	}
+
+	// Special handling for "ports" field (network scan results)
+	if key == "ports" || key == "Ports" {
+		return formatPortsArray(arr)
+	}
+
+	// Default: show count and first few items
+	if len(arr) <= 3 {
+		items := make([]string, len(arr))
+		for i, item := range arr {
+			items[i] = fmt.Sprintf("%v", item)
+		}
+		return strings.Join(items, ", ")
+	}
+	return fmt.Sprintf("[%d items]", len(arr))
+}
+
+// formatPortsArray formats a ports array from network scan results
+func formatPortsArray(arr []interface{}) string {
+	var ports []string
+	for _, item := range arr {
+		if portMap, ok := item.(map[string]interface{}); ok {
+			port := ""
+			proto := "tcp"
+			state := ""
+			service := ""
+
+			if p, ok := portMap["port"].(float64); ok {
+				port = fmt.Sprintf("%d", int(p))
+			}
+			if pr, ok := portMap["proto"].(string); ok {
+				proto = pr
+			}
+			if s, ok := portMap["state"].(string); ok {
+				state = s
+			}
+			if svc, ok := portMap["service"].(string); ok && svc != "" {
+				service = svc
+			}
+
+			if port != "" {
+				portStr := fmt.Sprintf("%s/%s", port, proto)
+				if service != "" {
+					portStr = fmt.Sprintf("%s (%s)", portStr, service)
+				}
+				if state == "open" {
+					ports = append(ports, colorize(portStr, colorGreen))
+				} else {
+					ports = append(ports, portStr)
+				}
+			}
+		}
+	}
+
+	if len(ports) == 0 {
+		return colorize("-", colorDarkGray)
+	}
+
+	return strings.Join(ports, ", ")
 }
 
 func printSessionsTable(sessions []*Session) {

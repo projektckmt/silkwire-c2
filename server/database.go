@@ -194,18 +194,34 @@ func (d *Database) GetRecentCommands(limit int) ([]DBCommand, error) {
 
 // Command result operations
 func (d *Database) SaveCommandResult(result *CommandResult) error {
+	// Get implant ID from command
+	var implantID string
+	var dbCommand DBCommand
+	if err := d.db.Where("command_id = ?", result.CommandID).First(&dbCommand).Error; err == nil {
+		implantID = dbCommand.ImplantID
+	}
+
+	// Check if result already exists
+	var existing DBCommandResult
+	err := d.db.Where("command_id = ?", result.CommandID).First(&existing).Error
+	if err == nil {
+		// Update existing result
+		existing.Success = result.Success
+		existing.Output = result.Output
+		existing.Error = result.Error
+		if implantID != "" {
+			existing.ImplantID = implantID
+		}
+		return d.db.Save(&existing).Error
+	}
+
+	// Create new result
 	dbResult := &DBCommandResult{
 		CommandID: result.CommandID,
-		ImplantID: "", // We'll need to get this from the command
+		ImplantID: implantID,
 		Success:   result.Success,
 		Output:    result.Output,
 		Error:     result.Error,
-	}
-
-	// Get implant ID from command
-	var dbCommand DBCommand
-	if err := d.db.Where("command_id = ?", result.CommandID).First(&dbCommand).Error; err == nil {
-		dbResult.ImplantID = dbCommand.ImplantID
 	}
 
 	return d.db.Create(dbResult).Error
