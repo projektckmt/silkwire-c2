@@ -85,16 +85,19 @@ func main() {
 
 	logrus.Info("Database initialized successfully")
 
-	// Load TLS certificates for secure communication; auto-generate self-signed if missing
-	var cert tls.Certificate
-	cert, err = tls.LoadX509KeyPair("server.crt", "server.key")
+	// Initialize CA manager for persistent certificate management
+	caManager, err := NewCAManager("ca", "localhost:8443")
 	if err != nil {
-		logrus.Warnf("Failed to load TLS certificates: %v — generating a self-signed pair", err)
-		cert, err = generateSelfSignedCertWithIP("localhost", ":8443")
-		if err != nil {
-			logrus.Fatalf("Failed to generate self-signed TLS certificate: %v", err)
-		}
+		logrus.Fatalf("Failed to initialize CA manager: %v", err)
 	}
+	logrus.Info("CA manager initialized for persistent certificates")
+
+	// Load or generate persistent CA-signed server certificate
+	cert, err := caManager.LoadOrGenerateServerCertificate("server", ":8443")
+	if err != nil {
+		logrus.Fatalf("Failed to load/generate server certificate: %v", err)
+	}
+	logrus.Info("Server certificate loaded (persistent, CA-signed)")
 
 	creds := credentials.NewTLS(&tls.Config{
 		Certificates: []tls.Certificate{cert},
@@ -122,7 +125,7 @@ func main() {
 	)
 
 	// Register C2 service
-	c2Server := NewC2Server(db, "localhost:8443")
+	c2Server := NewC2Server(db, caManager)
 	pb.RegisterC2ServiceServer(s, c2Server)
 
 	// Start server

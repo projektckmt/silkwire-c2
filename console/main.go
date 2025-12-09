@@ -1571,6 +1571,88 @@ func createSessionMenuCommands() *cobra.Command {
 	}
 	sessionRootCmd.AddCommand(downloadCmd)
 
+	// scan command
+	scanCmd := &cobra.Command{
+		Use:   "scan",
+		Short: "Perform network scan",
+		Run: func(cmd *cobra.Command, args []string) {
+			// Reconstruct command string from flags
+			var cmdBuilder strings.Builder
+			cmdBuilder.WriteString("scan")
+
+			if t, _ := cmd.Flags().GetString("target"); t != "" {
+				cmdBuilder.WriteString(fmt.Sprintf(" -t %s", t))
+			}
+			if p, _ := cmd.Flags().GetString("ports"); p != "" {
+				cmdBuilder.WriteString(fmt.Sprintf(" -p %s", p))
+			}
+			if u, _ := cmd.Flags().GetBool("udp"); u {
+				cmdBuilder.WriteString(" -u")
+			}
+			if b, _ := cmd.Flags().GetBool("banner"); b {
+				cmdBuilder.WriteString(" -b")
+			}
+			if th, _ := cmd.Flags().GetInt("threads"); th != 10 {
+				cmdBuilder.WriteString(fmt.Sprintf(" --threads %d", th))
+			}
+			if to, _ := cmd.Flags().GetInt("timeout"); to != 1000 {
+				cmdBuilder.WriteString(fmt.Sprintf(" --timeout %d", to))
+			}
+
+			ocGlobal.executeSessionCommand(currentSessionID, cmdBuilder.String())
+		},
+	}
+	scanCmd.Flags().StringP("target", "t", "", "Target IP or CIDR (required)")
+	scanCmd.Flags().StringP("ports", "p", "", "Comma-separated ports (default: top 20)")
+	scanCmd.Flags().BoolP("udp", "u", false, "Scan UDP")
+	scanCmd.Flags().BoolP("banner", "b", false, "Grab banners")
+	scanCmd.Flags().Int("threads", 10, "Number of threads")
+	scanCmd.Flags().Int("timeout", 1000, "Timeout in ms")
+	sessionRootCmd.AddCommand(scanCmd)
+
+	// ping command
+	pingCmd := &cobra.Command{
+		Use:   "ping <target>",
+		Short: "Ping a target (ICMP/TCP)",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			command := fmt.Sprintf("ping %s", args[0])
+			ocGlobal.executeSessionCommand(currentSessionID, command)
+		},
+	}
+	sessionRootCmd.AddCommand(pingCmd)
+
+	// jobs command
+	jobsCmd := &cobra.Command{
+		Use:   "jobs",
+		Short: "List background jobs",
+		Run: func(cmd *cobra.Command, args []string) {
+			ocGlobal.executeSessionCommand(currentSessionID, "jobs")
+		},
+	}
+	sessionRootCmd.AddCommand(jobsCmd)
+
+	// results command
+	resultsCmd := &cobra.Command{
+		Use:   "results <job_id>",
+		Short: "Get job results",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			ocGlobal.executeSessionCommand(currentSessionID, "results "+args[0])
+		},
+	}
+	sessionRootCmd.AddCommand(resultsCmd)
+
+	// ifconfig command
+	ifconfigCmd := &cobra.Command{
+		Use:   "ifconfig",
+		Short: "Show network interfaces",
+		Run: func(cmd *cobra.Command, args []string) {
+			ocGlobal.executeSessionCommand(currentSessionID, "ifconfig")
+		},
+	}
+	sessionRootCmd.AddCommand(ifconfigCmd)
+
 	// Module management commands
 	modulesCmd := &cobra.Command{
 		Use:   "modules",

@@ -22,7 +22,7 @@ proto:
 
 # Build all components
 .PHONY: build
-build: build-server build-client build-console
+build: build-server build-console
 
 # Build server
 .PHONY: build-server
@@ -34,7 +34,7 @@ build-server:
 .PHONY: build-client
 build-client:
 	@echo "Building C2 client..."
-	go build -o bin/c2-client ./implant
+	go build -C implant -o ../bin/c2-client .
 
 # Build console
 .PHONY: build-console
@@ -48,6 +48,8 @@ clean:
 	@echo "Cleaning build artifacts..."
 	rm -rf bin/
 	rm -rf $(PROTO_OUT_DIR)/
+	@# Clean old certs directory if it exists (legacy)
+	@if [ -d certs ]; then rm -rf certs/ && echo "Removed legacy certs/ directory"; fi
 
 # Install dependencies
 .PHONY: deps
@@ -75,14 +77,57 @@ tools:
 	@echo ""
 	@echo "Or run: export PATH=\"$$(go env GOPATH)/bin:\$$PATH\""
 
-# Generate TLS certificates for development
-.PHONY: certs
-certs:
-	@echo "Generating development TLS certificates..."
-	@mkdir -p certs
-	openssl req -x509 -newkey rsa:4096 -keyout certs/server.key -out certs/server.crt -days 365 -nodes \
-		-subj "/C=US/ST=State/L=City/O=Organization/CN=localhost" \
-		-addext "subjectAltName=DNS:localhost,IP:127.0.0.1,IP:::1"
+# Initialize CA and certificates (auto-generated on first server run)
+# The server now handles certificate generation automatically via CAManager
+# Certificates are stored in ca/ directory:
+#   ca/ca.crt, ca/ca.key - Certificate Authority
+#   ca/certs/*.crt, ca/certs/*.key - Server certificates (persistent)
+.PHONY: init-ca
+init-ca:
+	@echo "CA and certificates are auto-generated on server startup."
+	@echo "To manually initialize, run the server once: make run-server"
+	@echo ""
+	@echo "Certificate storage structure:"
+	@echo "  ca/ca.crt          - CA certificate"
+	@echo "  ca/ca.key          - CA private key"
+	@echo "  ca/certs/          - Server certificates directory"
+	@echo "    server.crt/.key  - Main server certificate (port 8443)"
+	@echo "    <listener>.crt/.key - Per-listener certificates"
+
+# Clean CA and certificates (WARNING: will invalidate all existing implants)
+.PHONY: clean-ca
+clean-ca:
+	@echo "WARNING: This will delete all CA and server certificates!"
+	@echo "All existing implants will fail to connect after this."
+	@read -p "Are you sure? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
+	@echo "Cleaning CA and certificates..."
+	rm -rf ca/
+
+# View CA certificate info
+.PHONY: ca-info
+ca-info:
+	@if [ -f ca/ca.crt ]; then \
+		echo "CA Certificate Info:"; \
+		openssl x509 -in ca/ca.crt -noout -subject -dates -issuer; \
+	else \
+		echo "CA not initialized. Run 'make run-server' first."; \
+	fi
+
+# List all server certificates
+.PHONY: list-certs
+list-certs:
+	@echo "Server Certificates:"
+	@if [ -d ca/certs ]; then \
+		for cert in ca/certs/*.crt; do \
+			if [ -f "$$cert" ]; then \
+				echo ""; \
+				echo "=== $$cert ==="; \
+				openssl x509 -in "$$cert" -noout -subject -dates 2>/dev/null || echo "  (invalid)"; \
+			fi; \
+		done; \
+	else \
+		echo "No certificates found. Run 'make run-server' first."; \
+	fi
 
 # Run tests
 .PHONY: test
@@ -92,9 +137,10 @@ test:
 
 # Run server
 .PHONY: run-server
-run-server: build-server certs
+run-server: build-server
 	@echo "Starting C2 server..."
-	cd certs && ../bin/c2-server
+	@echo "Certificates will be auto-generated in ca/ directory"
+	./bin/c2-server
 
 # Run client with server address
 .PHONY: run-client
@@ -112,8 +158,9 @@ run-console: build-console
 
 # Development setup
 .PHONY: dev-setup
-dev-setup: deps proto certs
+dev-setup: deps proto
 	@echo "Development environment ready!"
+	@echo "Run 'make run-server' to start the server (CA will be auto-generated)"
 
 # Generate cross-platform implants (development builds)
 .PHONY: generate-implants
@@ -136,21 +183,38 @@ clean-generated:
 .PHONY: help
 help:
 	@echo "Available targets:"
-	@echo "  all         - Generate proto files and build all components"
-	@echo "  proto       - Generate protobuf files"
-	@echo "  build       - Build all components"
-	@echo "  build-server- Build C2 server"
-	@echo "  build-client- Build C2 client"
-	@echo "  build-console- Build operator console"
-	@echo "  clean       - Clean build artifacts"
-	@echo "  clean-generated- Clean generated implants"
-	@echo "  deps        - Install Go dependencies"
-	@echo "  tools       - Install development tools (garble, etc.)"
-	@echo "  certs       - Generate development TLS certificates"
-	@echo "  test        - Run tests"
-	@echo "  run-server  - Run C2 server"
-	@echo "  run-client  - Run C2 client"
-	@echo "  run-console - Run operator console"
+	@echo ""
+	@echo "Build:"
+	@echo "  all              - Generate proto files and build all components"
+	@echo "  proto            - Generate protobuf files"
+	@echo "  build            - Build all components"
+	@echo "  build-server     - Build C2 server"
+	@echo "  build-client     - Build C2 client"
+	@echo "  build-console    - Build operator console"
+	@echo ""
+	@echo "Run:"
+	@echo "  run-server       - Run C2 server (auto-generates CA/certs)"
+	@echo "  run-client       - Run C2 client"
+	@echo "  run-console      - Run operator console"
+	@echo ""
+	@echo "Certificates (persistent CA-based):"
+	@echo "  init-ca          - Show CA/cert info (auto-generated on server start)"
+	@echo "  ca-info          - View CA certificate details"
+	@echo "  list-certs       - List all server certificates"
+	@echo "  clean-ca         - Delete CA and all certificates (WARNING: breaks implants)"
+	@echo ""
+	@echo "Cleanup:"
+	@echo "  clean            - Clean build artifacts"
+	@echo "  clean-generated  - Clean generated implants"
+	@echo ""
+	@echo "Development:"
+	@echo "  deps             - Install Go dependencies"
+	@echo "  tools            - Install development tools (garble, etc.)"
+	@echo "  test             - Run tests"
 	@echo "  generate-implants- Generate cross-platform development implants"
-	@echo "  dev-setup   - Setup development environment"
-	@echo "  help        - Show this help message"
+	@echo "  dev-setup        - Setup development environment"
+	@echo ""
+	@echo "Certificate Storage (in ca/ directory):"
+	@echo "  ca/ca.crt, ca/ca.key     - Certificate Authority (10 year validity)"
+	@echo "  ca/certs/server.crt/.key - Main server cert (1 year, auto-renewed)"
+	@echo "  ca/certs/<id>.crt/.key   - Listener certificates (persistent)"

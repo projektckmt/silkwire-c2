@@ -29,6 +29,7 @@ const (
 	C2Service_DeleteSession_FullMethodName      = "/c2.C2Service/DeleteSession"
 	C2Service_SendCommand_FullMethodName        = "/c2.C2Service/SendCommand"
 	C2Service_GetCommandResult_FullMethodName   = "/c2.C2Service/GetCommandResult"
+	C2Service_ListCommands_FullMethodName       = "/c2.C2Service/ListCommands"
 	C2Service_PTYStream_FullMethodName          = "/c2.C2Service/PTYStream"
 	C2Service_AddListener_FullMethodName        = "/c2.C2Service/AddListener"
 	C2Service_ListListeners_FullMethodName      = "/c2.C2Service/ListListeners"
@@ -59,6 +60,7 @@ type C2ServiceClient interface {
 	DeleteSession(ctx context.Context, in *SessionDeleteRequest, opts ...grpc.CallOption) (*SessionDeleteResponse, error)
 	SendCommand(ctx context.Context, in *SendCommandRequest, opts ...grpc.CallOption) (*SendCommandResponse, error)
 	GetCommandResult(ctx context.Context, in *CommandResultRequest, opts ...grpc.CallOption) (*CommandResultResponse, error)
+	ListCommands(ctx context.Context, in *CommandListRequest, opts ...grpc.CallOption) (*CommandListResponse, error)
 	// PTY streaming for interactive shells
 	PTYStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[PTYClientMessage, PTYServerMessage], error)
 	// Listener management
@@ -196,6 +198,16 @@ func (c *c2ServiceClient) GetCommandResult(ctx context.Context, in *CommandResul
 	return out, nil
 }
 
+func (c *c2ServiceClient) ListCommands(ctx context.Context, in *CommandListRequest, opts ...grpc.CallOption) (*CommandListResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CommandListResponse)
+	err := c.cc.Invoke(ctx, C2Service_ListCommands_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *c2ServiceClient) PTYStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[PTYClientMessage, PTYServerMessage], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &C2Service_ServiceDesc.Streams[3], C2Service_PTYStream_FullMethodName, cOpts...)
@@ -299,6 +311,7 @@ type C2ServiceServer interface {
 	DeleteSession(context.Context, *SessionDeleteRequest) (*SessionDeleteResponse, error)
 	SendCommand(context.Context, *SendCommandRequest) (*SendCommandResponse, error)
 	GetCommandResult(context.Context, *CommandResultRequest) (*CommandResultResponse, error)
+	ListCommands(context.Context, *CommandListRequest) (*CommandListResponse, error)
 	// PTY streaming for interactive shells
 	PTYStream(grpc.BidiStreamingServer[PTYClientMessage, PTYServerMessage]) error
 	// Listener management
@@ -350,6 +363,9 @@ func (UnimplementedC2ServiceServer) SendCommand(context.Context, *SendCommandReq
 }
 func (UnimplementedC2ServiceServer) GetCommandResult(context.Context, *CommandResultRequest) (*CommandResultResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetCommandResult not implemented")
+}
+func (UnimplementedC2ServiceServer) ListCommands(context.Context, *CommandListRequest) (*CommandListResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListCommands not implemented")
 }
 func (UnimplementedC2ServiceServer) PTYStream(grpc.BidiStreamingServer[PTYClientMessage, PTYServerMessage]) error {
 	return status.Errorf(codes.Unimplemented, "method PTYStream not implemented")
@@ -544,6 +560,24 @@ func _C2Service_GetCommandResult_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _C2Service_ListCommands_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CommandListRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(C2ServiceServer).ListCommands(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: C2Service_ListCommands_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(C2ServiceServer).ListCommands(ctx, req.(*CommandListRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _C2Service_PTYStream_Handler(srv interface{}, stream grpc.ServerStream) error {
 	return srv.(C2ServiceServer).PTYStream(&grpc.GenericServerStream[PTYClientMessage, PTYServerMessage]{ServerStream: stream})
 }
@@ -686,6 +720,10 @@ var C2Service_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetCommandResult",
 			Handler:    _C2Service_GetCommandResult_Handler,
+		},
+		{
+			MethodName: "ListCommands",
+			Handler:    _C2Service_ListCommands_Handler,
 		},
 		{
 			MethodName: "AddListener",

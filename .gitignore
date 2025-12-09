@@ -48,3 +48,4 @@ mimikatz.exe
 whoami.x64.o
 *.log
 *.db
+c2_server.db

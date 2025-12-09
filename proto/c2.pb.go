@@ -141,7 +141,7 @@ const (
 	CommandMessage_SCREENSHOT    CommandMessage_CommandType = 6
 	CommandMessage_KEYLOG        CommandMessage_CommandType = 7
 	CommandMessage_PROCESS_LIST  CommandMessage_CommandType = 8
-	CommandMessage_NETWORK_SCAN  CommandMessage_CommandType = 9
+	CommandMessage_NETWORK_SCAN  CommandMessage_CommandType = 9  // args: none (uses options)
 	CommandMessage_PTY_START     CommandMessage_CommandType = 10 // command: shell path or empty; args: cols, rows
 	CommandMessage_PTY_STDIN     CommandMessage_CommandType = 11 // data: raw stdin bytes
 	CommandMessage_PTY_RESIZE    CommandMessage_CommandType = 12 // args: cols, rows
@@ -154,6 +154,7 @@ const (
 	CommandMessage_MODULE_CONFIG CommandMessage_CommandType = 19 // configure a module: command=module_name, data=config_json
 	CommandMessage_MODULE_LIST   CommandMessage_CommandType = 20 // list all available/loaded modules
 	CommandMessage_HASHDUMP      CommandMessage_CommandType = 21 // dump SAM database hashes (Windows only)
+	CommandMessage_IFCONFIG      CommandMessage_CommandType = 54 // show network interfaces (ipconfig/ifconfig/ip addr)
 	// SOCKS Proxy & Port Forwarding
 	CommandMessage_SOCKS_START    CommandMessage_CommandType = 22 // args: [port] - start SOCKS5 proxy on specified port
 	CommandMessage_SOCKS_STOP     CommandMessage_CommandType = 23 // stop SOCKS5 proxy
@@ -218,6 +219,7 @@ var (
 		19: "MODULE_CONFIG",
 		20: "MODULE_LIST",
 		21: "HASHDUMP",
+		54: "IFCONFIG",
 		22: "SOCKS_START",
 		23: "SOCKS_STOP",
 		24: "PORTFWD_ADD",
@@ -271,6 +273,7 @@ var (
 		"MODULE_CONFIG":        19,
 		"MODULE_LIST":          20,
 		"HASHDUMP":             21,
+		"IFCONFIG":             54,
 		"SOCKS_START":          22,
 		"SOCKS_STOP":           23,
 		"PORTFWD_ADD":          24,
@@ -373,7 +376,7 @@ func (x ExecuteAssemblyOptions_ExecutionMethod) Number() protoreflect.EnumNumber
 
 // Deprecated: Use ExecuteAssemblyOptions_ExecutionMethod.Descriptor instead.
 func (ExecuteAssemblyOptions_ExecutionMethod) EnumDescriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{13, 0}
+	return file_proto_c2_proto_rawDescGZIP(), []int{14, 0}
 }
 
 type ExecuteShellcodeOptions_ExecutionMethod int32
@@ -425,7 +428,7 @@ func (x ExecuteShellcodeOptions_ExecutionMethod) Number() protoreflect.EnumNumbe
 
 // Deprecated: Use ExecuteShellcodeOptions_ExecutionMethod.Descriptor instead.
 func (ExecuteShellcodeOptions_ExecutionMethod) EnumDescriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{14, 0}
+	return file_proto_c2_proto_rawDescGZIP(), []int{15, 0}
 }
 
 type BOFOptions_ExecutionMethod int32
@@ -471,7 +474,7 @@ func (x BOFOptions_ExecutionMethod) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use BOFOptions_ExecutionMethod.Descriptor instead.
 func (BOFOptions_ExecutionMethod) EnumDescriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{16, 0}
+	return file_proto_c2_proto_rawDescGZIP(), []int{17, 0}
 }
 
 type SessionEvent_SessionEventType int32
@@ -480,6 +483,7 @@ const (
 	SessionEvent_SESSION_ESTABLISHED SessionEvent_SessionEventType = 0 // New session created
 	SessionEvent_SESSION_LOST        SessionEvent_SessionEventType = 1 // Session disconnected/timed out
 	SessionEvent_SESSION_UPDATED     SessionEvent_SessionEventType = 2 // Session information updated
+	SessionEvent_TASK_COMPLETED      SessionEvent_SessionEventType = 3 // Long-running task completed
 )
 
 // Enum value maps for SessionEvent_SessionEventType.
@@ -488,11 +492,13 @@ var (
 		0: "SESSION_ESTABLISHED",
 		1: "SESSION_LOST",
 		2: "SESSION_UPDATED",
+		3: "TASK_COMPLETED",
 	}
 	SessionEvent_SessionEventType_value = map[string]int32{
 		"SESSION_ESTABLISHED": 0,
 		"SESSION_LOST":        1,
 		"SESSION_UPDATED":     2,
+		"TASK_COMPLETED":      3,
 	}
 )
 
@@ -520,7 +526,7 @@ func (x SessionEvent_SessionEventType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use SessionEvent_SessionEventType.Descriptor instead.
 func (SessionEvent_SessionEventType) EnumDescriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{48, 0}
+	return file_proto_c2_proto_rawDescGZIP(), []int{52, 0}
 }
 
 // Registration Messages
@@ -800,9 +806,11 @@ type CommandMessage struct {
 	// Execute-PE specific options
 	ExecutePeOptions *ExecutePEOptions `protobuf:"bytes,9,opt,name=execute_pe_options,json=executePeOptions,proto3" json:"execute_pe_options,omitempty"`
 	// Execute-BOF specific options
-	BofOptions    *BOFOptions `protobuf:"bytes,10,opt,name=bof_options,json=bofOptions,proto3" json:"bof_options,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	BofOptions *BOFOptions `protobuf:"bytes,10,opt,name=bof_options,json=bofOptions,proto3" json:"bof_options,omitempty"`
+	// Network Scan specific options
+	NetworkScanOptions *NetworkScanOptions `protobuf:"bytes,11,opt,name=network_scan_options,json=networkScanOptions,proto3" json:"network_scan_options,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *CommandMessage) Reset() {
@@ -905,6 +913,98 @@ func (x *CommandMessage) GetBofOptions() *BOFOptions {
 	return nil
 }
 
+func (x *CommandMessage) GetNetworkScanOptions() *NetworkScanOptions {
+	if x != nil {
+		return x.NetworkScanOptions
+	}
+	return nil
+}
+
+// Network Scan Options
+type NetworkScanOptions struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TargetRange   string                 `protobuf:"bytes,1,opt,name=target_range,json=targetRange,proto3" json:"target_range,omitempty"` // CIDR or single IP
+	Ports         []int32                `protobuf:"varint,2,rep,packed,name=ports,proto3" json:"ports,omitempty"`                        // List of ports to scan
+	ScanUdp       bool                   `protobuf:"varint,3,opt,name=scan_udp,json=scanUdp,proto3" json:"scan_udp,omitempty"`            // Scan UDP instead of TCP
+	Threads       int32                  `protobuf:"varint,4,opt,name=threads,proto3" json:"threads,omitempty"`                           // Number of concurrent threads (default 10)
+	TimeoutMs     int32                  `protobuf:"varint,5,opt,name=timeout_ms,json=timeoutMs,proto3" json:"timeout_ms,omitempty"`      // Timeout per port in ms (default 1000)
+	BannerGrab    bool                   `protobuf:"varint,6,opt,name=banner_grab,json=bannerGrab,proto3" json:"banner_grab,omitempty"`   // Attempt to grab service banner
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NetworkScanOptions) Reset() {
+	*x = NetworkScanOptions{}
+	mi := &file_proto_c2_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NetworkScanOptions) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NetworkScanOptions) ProtoMessage() {}
+
+func (x *NetworkScanOptions) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_c2_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NetworkScanOptions.ProtoReflect.Descriptor instead.
+func (*NetworkScanOptions) Descriptor() ([]byte, []int) {
+	return file_proto_c2_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *NetworkScanOptions) GetTargetRange() string {
+	if x != nil {
+		return x.TargetRange
+	}
+	return ""
+}
+
+func (x *NetworkScanOptions) GetPorts() []int32 {
+	if x != nil {
+		return x.Ports
+	}
+	return nil
+}
+
+func (x *NetworkScanOptions) GetScanUdp() bool {
+	if x != nil {
+		return x.ScanUdp
+	}
+	return false
+}
+
+func (x *NetworkScanOptions) GetThreads() int32 {
+	if x != nil {
+		return x.Threads
+	}
+	return 0
+}
+
+func (x *NetworkScanOptions) GetTimeoutMs() int32 {
+	if x != nil {
+		return x.TimeoutMs
+	}
+	return 0
+}
+
+func (x *NetworkScanOptions) GetBannerGrab() bool {
+	if x != nil {
+		return x.BannerGrab
+	}
+	return false
+}
+
 // PTY streaming API (console <-> server). Server forwards to implant via CommandMessage
 type PTYClientMessage struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -921,7 +1021,7 @@ type PTYClientMessage struct {
 
 func (x *PTYClientMessage) Reset() {
 	*x = PTYClientMessage{}
-	mi := &file_proto_c2_proto_msgTypes[4]
+	mi := &file_proto_c2_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -933,7 +1033,7 @@ func (x *PTYClientMessage) String() string {
 func (*PTYClientMessage) ProtoMessage() {}
 
 func (x *PTYClientMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[4]
+	mi := &file_proto_c2_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -946,7 +1046,7 @@ func (x *PTYClientMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PTYClientMessage.ProtoReflect.Descriptor instead.
 func (*PTYClientMessage) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{4}
+	return file_proto_c2_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *PTYClientMessage) GetMsg() isPTYClientMessage_Msg {
@@ -1034,7 +1134,7 @@ type PTYServerMessage struct {
 
 func (x *PTYServerMessage) Reset() {
 	*x = PTYServerMessage{}
-	mi := &file_proto_c2_proto_msgTypes[5]
+	mi := &file_proto_c2_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1046,7 +1146,7 @@ func (x *PTYServerMessage) String() string {
 func (*PTYServerMessage) ProtoMessage() {}
 
 func (x *PTYServerMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[5]
+	mi := &file_proto_c2_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1059,7 +1159,7 @@ func (x *PTYServerMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PTYServerMessage.ProtoReflect.Descriptor instead.
 func (*PTYServerMessage) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{5}
+	return file_proto_c2_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *PTYServerMessage) GetMsg() isPTYServerMessage_Msg {
@@ -1130,7 +1230,7 @@ type PTYOpen struct {
 
 func (x *PTYOpen) Reset() {
 	*x = PTYOpen{}
-	mi := &file_proto_c2_proto_msgTypes[6]
+	mi := &file_proto_c2_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1142,7 +1242,7 @@ func (x *PTYOpen) String() string {
 func (*PTYOpen) ProtoMessage() {}
 
 func (x *PTYOpen) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[6]
+	mi := &file_proto_c2_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1155,7 +1255,7 @@ func (x *PTYOpen) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PTYOpen.ProtoReflect.Descriptor instead.
 func (*PTYOpen) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{6}
+	return file_proto_c2_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *PTYOpen) GetImplantId() string {
@@ -1197,7 +1297,7 @@ type PTYInput struct {
 
 func (x *PTYInput) Reset() {
 	*x = PTYInput{}
-	mi := &file_proto_c2_proto_msgTypes[7]
+	mi := &file_proto_c2_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1209,7 +1309,7 @@ func (x *PTYInput) String() string {
 func (*PTYInput) ProtoMessage() {}
 
 func (x *PTYInput) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[7]
+	mi := &file_proto_c2_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1222,7 +1322,7 @@ func (x *PTYInput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PTYInput.ProtoReflect.Descriptor instead.
 func (*PTYInput) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{7}
+	return file_proto_c2_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *PTYInput) GetImplantId() string {
@@ -1258,7 +1358,7 @@ type PTYResize struct {
 
 func (x *PTYResize) Reset() {
 	*x = PTYResize{}
-	mi := &file_proto_c2_proto_msgTypes[8]
+	mi := &file_proto_c2_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1270,7 +1370,7 @@ func (x *PTYResize) String() string {
 func (*PTYResize) ProtoMessage() {}
 
 func (x *PTYResize) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[8]
+	mi := &file_proto_c2_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1283,7 +1383,7 @@ func (x *PTYResize) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PTYResize.ProtoReflect.Descriptor instead.
 func (*PTYResize) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{8}
+	return file_proto_c2_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *PTYResize) GetImplantId() string {
@@ -1324,7 +1424,7 @@ type PTYClose struct {
 
 func (x *PTYClose) Reset() {
 	*x = PTYClose{}
-	mi := &file_proto_c2_proto_msgTypes[9]
+	mi := &file_proto_c2_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1336,7 +1436,7 @@ func (x *PTYClose) String() string {
 func (*PTYClose) ProtoMessage() {}
 
 func (x *PTYClose) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[9]
+	mi := &file_proto_c2_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1349,7 +1449,7 @@ func (x *PTYClose) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PTYClose.ProtoReflect.Descriptor instead.
 func (*PTYClose) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{9}
+	return file_proto_c2_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *PTYClose) GetImplantId() string {
@@ -1376,7 +1476,7 @@ type PTYOutput struct {
 
 func (x *PTYOutput) Reset() {
 	*x = PTYOutput{}
-	mi := &file_proto_c2_proto_msgTypes[10]
+	mi := &file_proto_c2_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1388,7 +1488,7 @@ func (x *PTYOutput) String() string {
 func (*PTYOutput) ProtoMessage() {}
 
 func (x *PTYOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[10]
+	mi := &file_proto_c2_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1401,7 +1501,7 @@ func (x *PTYOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PTYOutput.ProtoReflect.Descriptor instead.
 func (*PTYOutput) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{10}
+	return file_proto_c2_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *PTYOutput) GetCommandId() string {
@@ -1428,7 +1528,7 @@ type PTYClosed struct {
 
 func (x *PTYClosed) Reset() {
 	*x = PTYClosed{}
-	mi := &file_proto_c2_proto_msgTypes[11]
+	mi := &file_proto_c2_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1440,7 +1540,7 @@ func (x *PTYClosed) String() string {
 func (*PTYClosed) ProtoMessage() {}
 
 func (x *PTYClosed) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[11]
+	mi := &file_proto_c2_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1453,7 +1553,7 @@ func (x *PTYClosed) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PTYClosed.ProtoReflect.Descriptor instead.
 func (*PTYClosed) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{11}
+	return file_proto_c2_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *PTYClosed) GetCommandId() string {
@@ -1480,7 +1580,7 @@ type PTYError struct {
 
 func (x *PTYError) Reset() {
 	*x = PTYError{}
-	mi := &file_proto_c2_proto_msgTypes[12]
+	mi := &file_proto_c2_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1492,7 +1592,7 @@ func (x *PTYError) String() string {
 func (*PTYError) ProtoMessage() {}
 
 func (x *PTYError) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[12]
+	mi := &file_proto_c2_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1505,7 +1605,7 @@ func (x *PTYError) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PTYError.ProtoReflect.Descriptor instead.
 func (*PTYError) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{12}
+	return file_proto_c2_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *PTYError) GetCommandId() string {
@@ -1540,7 +1640,7 @@ type ExecuteAssemblyOptions struct {
 
 func (x *ExecuteAssemblyOptions) Reset() {
 	*x = ExecuteAssemblyOptions{}
-	mi := &file_proto_c2_proto_msgTypes[13]
+	mi := &file_proto_c2_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1552,7 +1652,7 @@ func (x *ExecuteAssemblyOptions) String() string {
 func (*ExecuteAssemblyOptions) ProtoMessage() {}
 
 func (x *ExecuteAssemblyOptions) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[13]
+	mi := &file_proto_c2_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1565,7 +1665,7 @@ func (x *ExecuteAssemblyOptions) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecuteAssemblyOptions.ProtoReflect.Descriptor instead.
 func (*ExecuteAssemblyOptions) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{13}
+	return file_proto_c2_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ExecuteAssemblyOptions) GetAppDomain() string {
@@ -1642,7 +1742,7 @@ type ExecuteShellcodeOptions struct {
 
 func (x *ExecuteShellcodeOptions) Reset() {
 	*x = ExecuteShellcodeOptions{}
-	mi := &file_proto_c2_proto_msgTypes[14]
+	mi := &file_proto_c2_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1654,7 +1754,7 @@ func (x *ExecuteShellcodeOptions) String() string {
 func (*ExecuteShellcodeOptions) ProtoMessage() {}
 
 func (x *ExecuteShellcodeOptions) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[14]
+	mi := &file_proto_c2_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1667,7 +1767,7 @@ func (x *ExecuteShellcodeOptions) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecuteShellcodeOptions.ProtoReflect.Descriptor instead.
 func (*ExecuteShellcodeOptions) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{14}
+	return file_proto_c2_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ExecuteShellcodeOptions) GetMethod() ExecuteShellcodeOptions_ExecutionMethod {
@@ -1696,7 +1796,7 @@ type ExecutePEOptions struct {
 
 func (x *ExecutePEOptions) Reset() {
 	*x = ExecutePEOptions{}
-	mi := &file_proto_c2_proto_msgTypes[15]
+	mi := &file_proto_c2_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1708,7 +1808,7 @@ func (x *ExecutePEOptions) String() string {
 func (*ExecutePEOptions) ProtoMessage() {}
 
 func (x *ExecutePEOptions) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[15]
+	mi := &file_proto_c2_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1721,7 +1821,7 @@ func (x *ExecutePEOptions) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecutePEOptions.ProtoReflect.Descriptor instead.
 func (*ExecutePEOptions) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{15}
+	return file_proto_c2_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ExecutePEOptions) GetSpawnTo() string {
@@ -1759,7 +1859,7 @@ type BOFOptions struct {
 
 func (x *BOFOptions) Reset() {
 	*x = BOFOptions{}
-	mi := &file_proto_c2_proto_msgTypes[16]
+	mi := &file_proto_c2_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1771,7 +1871,7 @@ func (x *BOFOptions) String() string {
 func (*BOFOptions) ProtoMessage() {}
 
 func (x *BOFOptions) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[16]
+	mi := &file_proto_c2_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1784,7 +1884,7 @@ func (x *BOFOptions) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BOFOptions.ProtoReflect.Descriptor instead.
 func (*BOFOptions) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{16}
+	return file_proto_c2_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *BOFOptions) GetMethod() BOFOptions_ExecutionMethod {
@@ -1834,7 +1934,7 @@ type Listener struct {
 
 func (x *Listener) Reset() {
 	*x = Listener{}
-	mi := &file_proto_c2_proto_msgTypes[17]
+	mi := &file_proto_c2_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1846,7 +1946,7 @@ func (x *Listener) String() string {
 func (*Listener) ProtoMessage() {}
 
 func (x *Listener) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[17]
+	mi := &file_proto_c2_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1859,7 +1959,7 @@ func (x *Listener) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Listener.ProtoReflect.Descriptor instead.
 func (*Listener) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{17}
+	return file_proto_c2_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *Listener) GetId() string {
@@ -1903,7 +2003,7 @@ type ListenerAddRequest struct {
 
 func (x *ListenerAddRequest) Reset() {
 	*x = ListenerAddRequest{}
-	mi := &file_proto_c2_proto_msgTypes[18]
+	mi := &file_proto_c2_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1915,7 +2015,7 @@ func (x *ListenerAddRequest) String() string {
 func (*ListenerAddRequest) ProtoMessage() {}
 
 func (x *ListenerAddRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[18]
+	mi := &file_proto_c2_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1928,7 +2028,7 @@ func (x *ListenerAddRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListenerAddRequest.ProtoReflect.Descriptor instead.
 func (*ListenerAddRequest) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{18}
+	return file_proto_c2_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ListenerAddRequest) GetAddress() string {
@@ -1977,7 +2077,7 @@ type ListenerAddResponse struct {
 
 func (x *ListenerAddResponse) Reset() {
 	*x = ListenerAddResponse{}
-	mi := &file_proto_c2_proto_msgTypes[19]
+	mi := &file_proto_c2_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1989,7 +2089,7 @@ func (x *ListenerAddResponse) String() string {
 func (*ListenerAddResponse) ProtoMessage() {}
 
 func (x *ListenerAddResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[19]
+	mi := &file_proto_c2_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2002,7 +2102,7 @@ func (x *ListenerAddResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListenerAddResponse.ProtoReflect.Descriptor instead.
 func (*ListenerAddResponse) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{19}
+	return file_proto_c2_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ListenerAddResponse) GetSuccess() bool {
@@ -2034,7 +2134,7 @@ type ListenerListRequest struct {
 
 func (x *ListenerListRequest) Reset() {
 	*x = ListenerListRequest{}
-	mi := &file_proto_c2_proto_msgTypes[20]
+	mi := &file_proto_c2_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2046,7 +2146,7 @@ func (x *ListenerListRequest) String() string {
 func (*ListenerListRequest) ProtoMessage() {}
 
 func (x *ListenerListRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[20]
+	mi := &file_proto_c2_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2059,7 +2159,7 @@ func (x *ListenerListRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListenerListRequest.ProtoReflect.Descriptor instead.
 func (*ListenerListRequest) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{20}
+	return file_proto_c2_proto_rawDescGZIP(), []int{21}
 }
 
 type ListenerListResponse struct {
@@ -2071,7 +2171,7 @@ type ListenerListResponse struct {
 
 func (x *ListenerListResponse) Reset() {
 	*x = ListenerListResponse{}
-	mi := &file_proto_c2_proto_msgTypes[21]
+	mi := &file_proto_c2_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2083,7 +2183,7 @@ func (x *ListenerListResponse) String() string {
 func (*ListenerListResponse) ProtoMessage() {}
 
 func (x *ListenerListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[21]
+	mi := &file_proto_c2_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2096,7 +2196,7 @@ func (x *ListenerListResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListenerListResponse.ProtoReflect.Descriptor instead.
 func (*ListenerListResponse) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{21}
+	return file_proto_c2_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ListenerListResponse) GetListeners() []*Listener {
@@ -2115,7 +2215,7 @@ type ListenerRemoveRequest struct {
 
 func (x *ListenerRemoveRequest) Reset() {
 	*x = ListenerRemoveRequest{}
-	mi := &file_proto_c2_proto_msgTypes[22]
+	mi := &file_proto_c2_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2127,7 +2227,7 @@ func (x *ListenerRemoveRequest) String() string {
 func (*ListenerRemoveRequest) ProtoMessage() {}
 
 func (x *ListenerRemoveRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[22]
+	mi := &file_proto_c2_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2140,7 +2240,7 @@ func (x *ListenerRemoveRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListenerRemoveRequest.ProtoReflect.Descriptor instead.
 func (*ListenerRemoveRequest) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{22}
+	return file_proto_c2_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ListenerRemoveRequest) GetId() string {
@@ -2160,7 +2260,7 @@ type ListenerRemoveResponse struct {
 
 func (x *ListenerRemoveResponse) Reset() {
 	*x = ListenerRemoveResponse{}
-	mi := &file_proto_c2_proto_msgTypes[23]
+	mi := &file_proto_c2_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2172,7 +2272,7 @@ func (x *ListenerRemoveResponse) String() string {
 func (*ListenerRemoveResponse) ProtoMessage() {}
 
 func (x *ListenerRemoveResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[23]
+	mi := &file_proto_c2_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2185,7 +2285,7 @@ func (x *ListenerRemoveResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListenerRemoveResponse.ProtoReflect.Descriptor instead.
 func (*ListenerRemoveResponse) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{23}
+	return file_proto_c2_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ListenerRemoveResponse) GetSuccess() bool {
@@ -2216,7 +2316,7 @@ type ImplantGenerationRequest struct {
 
 func (x *ImplantGenerationRequest) Reset() {
 	*x = ImplantGenerationRequest{}
-	mi := &file_proto_c2_proto_msgTypes[24]
+	mi := &file_proto_c2_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2228,7 +2328,7 @@ func (x *ImplantGenerationRequest) String() string {
 func (*ImplantGenerationRequest) ProtoMessage() {}
 
 func (x *ImplantGenerationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[24]
+	mi := &file_proto_c2_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2241,7 +2341,7 @@ func (x *ImplantGenerationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImplantGenerationRequest.ProtoReflect.Descriptor instead.
 func (*ImplantGenerationRequest) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{24}
+	return file_proto_c2_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *ImplantGenerationRequest) GetListenerId() string {
@@ -2292,7 +2392,7 @@ type ImplantGenerationResponse struct {
 
 func (x *ImplantGenerationResponse) Reset() {
 	*x = ImplantGenerationResponse{}
-	mi := &file_proto_c2_proto_msgTypes[25]
+	mi := &file_proto_c2_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2304,7 +2404,7 @@ func (x *ImplantGenerationResponse) String() string {
 func (*ImplantGenerationResponse) ProtoMessage() {}
 
 func (x *ImplantGenerationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[25]
+	mi := &file_proto_c2_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2317,7 +2417,7 @@ func (x *ImplantGenerationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImplantGenerationResponse.ProtoReflect.Descriptor instead.
 func (*ImplantGenerationResponse) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{25}
+	return file_proto_c2_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *ImplantGenerationResponse) GetSuccess() bool {
@@ -2368,7 +2468,7 @@ type ImplantConfig struct {
 
 func (x *ImplantConfig) Reset() {
 	*x = ImplantConfig{}
-	mi := &file_proto_c2_proto_msgTypes[26]
+	mi := &file_proto_c2_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2380,7 +2480,7 @@ func (x *ImplantConfig) String() string {
 func (*ImplantConfig) ProtoMessage() {}
 
 func (x *ImplantConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[26]
+	mi := &file_proto_c2_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2393,7 +2493,7 @@ func (x *ImplantConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImplantConfig.ProtoReflect.Descriptor instead.
 func (*ImplantConfig) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{26}
+	return file_proto_c2_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ImplantConfig) GetServerAddress() string {
@@ -2440,7 +2540,7 @@ type ImplantBuildsListRequest struct {
 
 func (x *ImplantBuildsListRequest) Reset() {
 	*x = ImplantBuildsListRequest{}
-	mi := &file_proto_c2_proto_msgTypes[27]
+	mi := &file_proto_c2_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2452,7 +2552,7 @@ func (x *ImplantBuildsListRequest) String() string {
 func (*ImplantBuildsListRequest) ProtoMessage() {}
 
 func (x *ImplantBuildsListRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[27]
+	mi := &file_proto_c2_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2465,7 +2565,7 @@ func (x *ImplantBuildsListRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImplantBuildsListRequest.ProtoReflect.Descriptor instead.
 func (*ImplantBuildsListRequest) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{27}
+	return file_proto_c2_proto_rawDescGZIP(), []int{28}
 }
 
 type ImplantBuildsListResponse struct {
@@ -2477,7 +2577,7 @@ type ImplantBuildsListResponse struct {
 
 func (x *ImplantBuildsListResponse) Reset() {
 	*x = ImplantBuildsListResponse{}
-	mi := &file_proto_c2_proto_msgTypes[28]
+	mi := &file_proto_c2_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2489,7 +2589,7 @@ func (x *ImplantBuildsListResponse) String() string {
 func (*ImplantBuildsListResponse) ProtoMessage() {}
 
 func (x *ImplantBuildsListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[28]
+	mi := &file_proto_c2_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2502,7 +2602,7 @@ func (x *ImplantBuildsListResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImplantBuildsListResponse.ProtoReflect.Descriptor instead.
 func (*ImplantBuildsListResponse) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{28}
+	return file_proto_c2_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *ImplantBuildsListResponse) GetBuilds() []*ImplantBuildInfo {
@@ -2534,7 +2634,7 @@ type ImplantBuildInfo struct {
 
 func (x *ImplantBuildInfo) Reset() {
 	*x = ImplantBuildInfo{}
-	mi := &file_proto_c2_proto_msgTypes[29]
+	mi := &file_proto_c2_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2546,7 +2646,7 @@ func (x *ImplantBuildInfo) String() string {
 func (*ImplantBuildInfo) ProtoMessage() {}
 
 func (x *ImplantBuildInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[29]
+	mi := &file_proto_c2_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2559,7 +2659,7 @@ func (x *ImplantBuildInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImplantBuildInfo.ProtoReflect.Descriptor instead.
 func (*ImplantBuildInfo) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{29}
+	return file_proto_c2_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *ImplantBuildInfo) GetBuildId() string {
@@ -2671,7 +2771,7 @@ type TaskRequest struct {
 
 func (x *TaskRequest) Reset() {
 	*x = TaskRequest{}
-	mi := &file_proto_c2_proto_msgTypes[30]
+	mi := &file_proto_c2_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2683,7 +2783,7 @@ func (x *TaskRequest) String() string {
 func (*TaskRequest) ProtoMessage() {}
 
 func (x *TaskRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[30]
+	mi := &file_proto_c2_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2696,7 +2796,7 @@ func (x *TaskRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TaskRequest.ProtoReflect.Descriptor instead.
 func (*TaskRequest) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{30}
+	return file_proto_c2_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *TaskRequest) GetImplantId() string {
@@ -2722,7 +2822,7 @@ type TaskResponse struct {
 
 func (x *TaskResponse) Reset() {
 	*x = TaskResponse{}
-	mi := &file_proto_c2_proto_msgTypes[31]
+	mi := &file_proto_c2_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2734,7 +2834,7 @@ func (x *TaskResponse) String() string {
 func (*TaskResponse) ProtoMessage() {}
 
 func (x *TaskResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[31]
+	mi := &file_proto_c2_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2747,7 +2847,7 @@ func (x *TaskResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TaskResponse.ProtoReflect.Descriptor instead.
 func (*TaskResponse) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{31}
+	return file_proto_c2_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *TaskResponse) GetTasks() []*Task {
@@ -2772,7 +2872,7 @@ type Task struct {
 
 func (x *Task) Reset() {
 	*x = Task{}
-	mi := &file_proto_c2_proto_msgTypes[32]
+	mi := &file_proto_c2_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2784,7 +2884,7 @@ func (x *Task) String() string {
 func (*Task) ProtoMessage() {}
 
 func (x *Task) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[32]
+	mi := &file_proto_c2_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2797,7 +2897,7 @@ func (x *Task) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Task.ProtoReflect.Descriptor instead.
 func (*Task) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{32}
+	return file_proto_c2_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *Task) GetTaskId() string {
@@ -2863,7 +2963,7 @@ type TaskResult struct {
 
 func (x *TaskResult) Reset() {
 	*x = TaskResult{}
-	mi := &file_proto_c2_proto_msgTypes[33]
+	mi := &file_proto_c2_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2875,7 +2975,7 @@ func (x *TaskResult) String() string {
 func (*TaskResult) ProtoMessage() {}
 
 func (x *TaskResult) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[33]
+	mi := &file_proto_c2_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2888,7 +2988,7 @@ func (x *TaskResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TaskResult.ProtoReflect.Descriptor instead.
 func (*TaskResult) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{33}
+	return file_proto_c2_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *TaskResult) GetImplantId() string {
@@ -2943,7 +3043,7 @@ type TaskAck struct {
 
 func (x *TaskAck) Reset() {
 	*x = TaskAck{}
-	mi := &file_proto_c2_proto_msgTypes[34]
+	mi := &file_proto_c2_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2955,7 +3055,7 @@ func (x *TaskAck) String() string {
 func (*TaskAck) ProtoMessage() {}
 
 func (x *TaskAck) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[34]
+	mi := &file_proto_c2_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2968,7 +3068,7 @@ func (x *TaskAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TaskAck.ProtoReflect.Descriptor instead.
 func (*TaskAck) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{34}
+	return file_proto_c2_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *TaskAck) GetReceived() bool {
@@ -3000,7 +3100,7 @@ type FileChunk struct {
 
 func (x *FileChunk) Reset() {
 	*x = FileChunk{}
-	mi := &file_proto_c2_proto_msgTypes[35]
+	mi := &file_proto_c2_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3012,7 +3112,7 @@ func (x *FileChunk) String() string {
 func (*FileChunk) ProtoMessage() {}
 
 func (x *FileChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[35]
+	mi := &file_proto_c2_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3025,7 +3125,7 @@ func (x *FileChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileChunk.ProtoReflect.Descriptor instead.
 func (*FileChunk) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{35}
+	return file_proto_c2_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *FileChunk) GetFileId() string {
@@ -3081,7 +3181,7 @@ type FileRequest struct {
 
 func (x *FileRequest) Reset() {
 	*x = FileRequest{}
-	mi := &file_proto_c2_proto_msgTypes[36]
+	mi := &file_proto_c2_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3093,7 +3193,7 @@ func (x *FileRequest) String() string {
 func (*FileRequest) ProtoMessage() {}
 
 func (x *FileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[36]
+	mi := &file_proto_c2_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3106,7 +3206,7 @@ func (x *FileRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileRequest.ProtoReflect.Descriptor instead.
 func (*FileRequest) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{36}
+	return file_proto_c2_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *FileRequest) GetImplantId() string {
@@ -3142,7 +3242,7 @@ type FileResponse struct {
 
 func (x *FileResponse) Reset() {
 	*x = FileResponse{}
-	mi := &file_proto_c2_proto_msgTypes[37]
+	mi := &file_proto_c2_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3154,7 +3254,7 @@ func (x *FileResponse) String() string {
 func (*FileResponse) ProtoMessage() {}
 
 func (x *FileResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[37]
+	mi := &file_proto_c2_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3167,7 +3267,7 @@ func (x *FileResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileResponse.ProtoReflect.Descriptor instead.
 func (*FileResponse) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{37}
+	return file_proto_c2_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *FileResponse) GetSuccess() bool {
@@ -3208,7 +3308,7 @@ type SessionListRequest struct {
 
 func (x *SessionListRequest) Reset() {
 	*x = SessionListRequest{}
-	mi := &file_proto_c2_proto_msgTypes[38]
+	mi := &file_proto_c2_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3220,7 +3320,7 @@ func (x *SessionListRequest) String() string {
 func (*SessionListRequest) ProtoMessage() {}
 
 func (x *SessionListRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[38]
+	mi := &file_proto_c2_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3233,7 +3333,7 @@ func (x *SessionListRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionListRequest.ProtoReflect.Descriptor instead.
 func (*SessionListRequest) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{38}
+	return file_proto_c2_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *SessionListRequest) GetAuthToken() string {
@@ -3263,7 +3363,7 @@ type SessionInfo struct {
 
 func (x *SessionInfo) Reset() {
 	*x = SessionInfo{}
-	mi := &file_proto_c2_proto_msgTypes[39]
+	mi := &file_proto_c2_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3275,7 +3375,7 @@ func (x *SessionInfo) String() string {
 func (*SessionInfo) ProtoMessage() {}
 
 func (x *SessionInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[39]
+	mi := &file_proto_c2_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3288,7 +3388,7 @@ func (x *SessionInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionInfo.ProtoReflect.Descriptor instead.
 func (*SessionInfo) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{39}
+	return file_proto_c2_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *SessionInfo) GetImplantId() string {
@@ -3384,7 +3484,7 @@ type SessionListResponse struct {
 
 func (x *SessionListResponse) Reset() {
 	*x = SessionListResponse{}
-	mi := &file_proto_c2_proto_msgTypes[40]
+	mi := &file_proto_c2_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3396,7 +3496,7 @@ func (x *SessionListResponse) String() string {
 func (*SessionListResponse) ProtoMessage() {}
 
 func (x *SessionListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[40]
+	mi := &file_proto_c2_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3409,7 +3509,7 @@ func (x *SessionListResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionListResponse.ProtoReflect.Descriptor instead.
 func (*SessionListResponse) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{40}
+	return file_proto_c2_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *SessionListResponse) GetSessions() []*SessionInfo {
@@ -3428,7 +3528,7 @@ type SessionDeleteRequest struct {
 
 func (x *SessionDeleteRequest) Reset() {
 	*x = SessionDeleteRequest{}
-	mi := &file_proto_c2_proto_msgTypes[41]
+	mi := &file_proto_c2_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3440,7 +3540,7 @@ func (x *SessionDeleteRequest) String() string {
 func (*SessionDeleteRequest) ProtoMessage() {}
 
 func (x *SessionDeleteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[41]
+	mi := &file_proto_c2_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3453,7 +3553,7 @@ func (x *SessionDeleteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionDeleteRequest.ProtoReflect.Descriptor instead.
 func (*SessionDeleteRequest) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{41}
+	return file_proto_c2_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *SessionDeleteRequest) GetImplantId() string {
@@ -3473,7 +3573,7 @@ type SessionDeleteResponse struct {
 
 func (x *SessionDeleteResponse) Reset() {
 	*x = SessionDeleteResponse{}
-	mi := &file_proto_c2_proto_msgTypes[42]
+	mi := &file_proto_c2_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3485,7 +3585,7 @@ func (x *SessionDeleteResponse) String() string {
 func (*SessionDeleteResponse) ProtoMessage() {}
 
 func (x *SessionDeleteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[42]
+	mi := &file_proto_c2_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3498,7 +3598,7 @@ func (x *SessionDeleteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionDeleteResponse.ProtoReflect.Descriptor instead.
 func (*SessionDeleteResponse) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{42}
+	return file_proto_c2_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *SessionDeleteResponse) GetSuccess() bool {
@@ -3525,7 +3625,7 @@ type SendCommandRequest struct {
 
 func (x *SendCommandRequest) Reset() {
 	*x = SendCommandRequest{}
-	mi := &file_proto_c2_proto_msgTypes[43]
+	mi := &file_proto_c2_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3537,7 +3637,7 @@ func (x *SendCommandRequest) String() string {
 func (*SendCommandRequest) ProtoMessage() {}
 
 func (x *SendCommandRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[43]
+	mi := &file_proto_c2_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3550,7 +3650,7 @@ func (x *SendCommandRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendCommandRequest.ProtoReflect.Descriptor instead.
 func (*SendCommandRequest) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{43}
+	return file_proto_c2_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *SendCommandRequest) GetImplantId() string {
@@ -3578,7 +3678,7 @@ type SendCommandResponse struct {
 
 func (x *SendCommandResponse) Reset() {
 	*x = SendCommandResponse{}
-	mi := &file_proto_c2_proto_msgTypes[44]
+	mi := &file_proto_c2_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3590,7 +3690,7 @@ func (x *SendCommandResponse) String() string {
 func (*SendCommandResponse) ProtoMessage() {}
 
 func (x *SendCommandResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[44]
+	mi := &file_proto_c2_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3603,7 +3703,7 @@ func (x *SendCommandResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendCommandResponse.ProtoReflect.Descriptor instead.
 func (*SendCommandResponse) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{44}
+	return file_proto_c2_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *SendCommandResponse) GetSuccess() bool {
@@ -3637,7 +3737,7 @@ type CommandResultRequest struct {
 
 func (x *CommandResultRequest) Reset() {
 	*x = CommandResultRequest{}
-	mi := &file_proto_c2_proto_msgTypes[45]
+	mi := &file_proto_c2_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3649,7 +3749,7 @@ func (x *CommandResultRequest) String() string {
 func (*CommandResultRequest) ProtoMessage() {}
 
 func (x *CommandResultRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[45]
+	mi := &file_proto_c2_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3662,7 +3762,7 @@ func (x *CommandResultRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandResultRequest.ProtoReflect.Descriptor instead.
 func (*CommandResultRequest) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{45}
+	return file_proto_c2_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *CommandResultRequest) GetCommandId() string {
@@ -3691,7 +3791,7 @@ type CommandResultResponse struct {
 
 func (x *CommandResultResponse) Reset() {
 	*x = CommandResultResponse{}
-	mi := &file_proto_c2_proto_msgTypes[46]
+	mi := &file_proto_c2_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3703,7 +3803,7 @@ func (x *CommandResultResponse) String() string {
 func (*CommandResultResponse) ProtoMessage() {}
 
 func (x *CommandResultResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[46]
+	mi := &file_proto_c2_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3716,7 +3816,7 @@ func (x *CommandResultResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandResultResponse.ProtoReflect.Descriptor instead.
 func (*CommandResultResponse) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{46}
+	return file_proto_c2_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *CommandResultResponse) GetReady() bool {
@@ -3747,6 +3847,194 @@ func (x *CommandResultResponse) GetError() string {
 	return ""
 }
 
+type CommandListRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ImplantId     string                 `protobuf:"bytes,1,opt,name=implant_id,json=implantId,proto3" json:"implant_id,omitempty"` // Optional filter by implant
+	Limit         int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`                         // Optional limit (default 100)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CommandListRequest) Reset() {
+	*x = CommandListRequest{}
+	mi := &file_proto_c2_proto_msgTypes[48]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CommandListRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CommandListRequest) ProtoMessage() {}
+
+func (x *CommandListRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_c2_proto_msgTypes[48]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CommandListRequest.ProtoReflect.Descriptor instead.
+func (*CommandListRequest) Descriptor() ([]byte, []int) {
+	return file_proto_c2_proto_rawDescGZIP(), []int{48}
+}
+
+func (x *CommandListRequest) GetImplantId() string {
+	if x != nil {
+		return x.ImplantId
+	}
+	return ""
+}
+
+func (x *CommandListRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+type CommandInfo struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CommandId     string                 `protobuf:"bytes,1,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
+	ImplantId     string                 `protobuf:"bytes,2,opt,name=implant_id,json=implantId,proto3" json:"implant_id,omitempty"`
+	Type          string                 `protobuf:"bytes,3,opt,name=type,proto3" json:"type,omitempty"`
+	Command       string                 `protobuf:"bytes,4,opt,name=command,proto3" json:"command,omitempty"`
+	Status        string                 `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"`
+	CreatedAt     int64                  `protobuf:"varint,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	CompletedAt   int64                  `protobuf:"varint,7,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CommandInfo) Reset() {
+	*x = CommandInfo{}
+	mi := &file_proto_c2_proto_msgTypes[49]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CommandInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CommandInfo) ProtoMessage() {}
+
+func (x *CommandInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_c2_proto_msgTypes[49]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CommandInfo.ProtoReflect.Descriptor instead.
+func (*CommandInfo) Descriptor() ([]byte, []int) {
+	return file_proto_c2_proto_rawDescGZIP(), []int{49}
+}
+
+func (x *CommandInfo) GetCommandId() string {
+	if x != nil {
+		return x.CommandId
+	}
+	return ""
+}
+
+func (x *CommandInfo) GetImplantId() string {
+	if x != nil {
+		return x.ImplantId
+	}
+	return ""
+}
+
+func (x *CommandInfo) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *CommandInfo) GetCommand() string {
+	if x != nil {
+		return x.Command
+	}
+	return ""
+}
+
+func (x *CommandInfo) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *CommandInfo) GetCreatedAt() int64 {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return 0
+}
+
+func (x *CommandInfo) GetCompletedAt() int64 {
+	if x != nil {
+		return x.CompletedAt
+	}
+	return 0
+}
+
+type CommandListResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Commands      []*CommandInfo         `protobuf:"bytes,1,rep,name=commands,proto3" json:"commands,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CommandListResponse) Reset() {
+	*x = CommandListResponse{}
+	mi := &file_proto_c2_proto_msgTypes[50]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CommandListResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CommandListResponse) ProtoMessage() {}
+
+func (x *CommandListResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_c2_proto_msgTypes[50]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CommandListResponse.ProtoReflect.Descriptor instead.
+func (*CommandListResponse) Descriptor() ([]byte, []int) {
+	return file_proto_c2_proto_rawDescGZIP(), []int{50}
+}
+
+func (x *CommandListResponse) GetCommands() []*CommandInfo {
+	if x != nil {
+		return x.Commands
+	}
+	return nil
+}
+
 // Session Event Streaming
 type SessionEventStreamRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -3756,7 +4044,7 @@ type SessionEventStreamRequest struct {
 
 func (x *SessionEventStreamRequest) Reset() {
 	*x = SessionEventStreamRequest{}
-	mi := &file_proto_c2_proto_msgTypes[47]
+	mi := &file_proto_c2_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3768,7 +4056,7 @@ func (x *SessionEventStreamRequest) String() string {
 func (*SessionEventStreamRequest) ProtoMessage() {}
 
 func (x *SessionEventStreamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[47]
+	mi := &file_proto_c2_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3781,7 +4069,7 @@ func (x *SessionEventStreamRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionEventStreamRequest.ProtoReflect.Descriptor instead.
 func (*SessionEventStreamRequest) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{47}
+	return file_proto_c2_proto_rawDescGZIP(), []int{51}
 }
 
 type SessionEvent struct {
@@ -3796,7 +4084,7 @@ type SessionEvent struct {
 
 func (x *SessionEvent) Reset() {
 	*x = SessionEvent{}
-	mi := &file_proto_c2_proto_msgTypes[48]
+	mi := &file_proto_c2_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3808,7 +4096,7 @@ func (x *SessionEvent) String() string {
 func (*SessionEvent) ProtoMessage() {}
 
 func (x *SessionEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_c2_proto_msgTypes[48]
+	mi := &file_proto_c2_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3821,7 +4109,7 @@ func (x *SessionEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionEvent.ProtoReflect.Descriptor instead.
 func (*SessionEvent) Descriptor() ([]byte, []int) {
-	return file_proto_c2_proto_rawDescGZIP(), []int{48}
+	return file_proto_c2_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *SessionEvent) GetEventType() SessionEvent_SessionEventType {
@@ -3889,8 +4177,7 @@ const file_proto_c2_proto_rawDesc = "" +
 	"\x03LOG\x10\x03\x12\x0e\n" +
 	"\n" +
 	"PTY_OUTPUT\x10\x04\x12\f\n" +
-	"\bPTY_EXIT\x10\x05\"\xe8\n" +
-	"\n" +
+	"\bPTY_EXIT\x10\x05\"\xc0\v\n" +
 	"\x0eCommandMessage\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x122\n" +
@@ -3904,7 +4191,8 @@ const file_proto_c2_proto_rawDesc = "" +
 	"\x12execute_pe_options\x18\t \x01(\v2\x14.c2.ExecutePEOptionsR\x10executePeOptions\x12/\n" +
 	"\vbof_options\x18\n" +
 	" \x01(\v2\x0e.c2.BOFOptionsR\n" +
-	"bofOptions\"\x82\a\n" +
+	"bofOptions\x12H\n" +
+	"\x14network_scan_options\x18\v \x01(\v2\x16.c2.NetworkScanOptionsR\x12networkScanOptions\"\x90\a\n" +
 	"\vCommandType\x12\t\n" +
 	"\x05SHELL\x10\x00\x12\x0e\n" +
 	"\n" +
@@ -3933,7 +4221,8 @@ const file_proto_c2_proto_rawDesc = "" +
 	"\rMODULE_STATUS\x10\x12\x12\x11\n" +
 	"\rMODULE_CONFIG\x10\x13\x12\x0f\n" +
 	"\vMODULE_LIST\x10\x14\x12\f\n" +
-	"\bHASHDUMP\x10\x15\x12\x0f\n" +
+	"\bHASHDUMP\x10\x15\x12\f\n" +
+	"\bIFCONFIG\x106\x12\x0f\n" +
 	"\vSOCKS_START\x10\x16\x12\x0e\n" +
 	"\n" +
 	"SOCKS_STOP\x10\x17\x12\x0f\n" +
@@ -3966,7 +4255,16 @@ const file_proto_c2_proto_rawDesc = "" +
 	"\x11EXECUTE_SHELLCODE\x103\x12\x0e\n" +
 	"\n" +
 	"EXECUTE_PE\x104\x12\x0f\n" +
-	"\vEXECUTE_BOF\x105\"\xb1\x01\n" +
+	"\vEXECUTE_BOF\x105\"\xc2\x01\n" +
+	"\x12NetworkScanOptions\x12!\n" +
+	"\ftarget_range\x18\x01 \x01(\tR\vtargetRange\x12\x14\n" +
+	"\x05ports\x18\x02 \x03(\x05R\x05ports\x12\x19\n" +
+	"\bscan_udp\x18\x03 \x01(\bR\ascanUdp\x12\x18\n" +
+	"\athreads\x18\x04 \x01(\x05R\athreads\x12\x1d\n" +
+	"\n" +
+	"timeout_ms\x18\x05 \x01(\x05R\ttimeoutMs\x12\x1f\n" +
+	"\vbanner_grab\x18\x06 \x01(\bR\n" +
+	"bannerGrab\"\xb1\x01\n" +
 	"\x10PTYClientMessage\x12!\n" +
 	"\x04open\x18\x01 \x01(\v2\v.c2.PTYOpenH\x00R\x04open\x12$\n" +
 	"\x05input\x18\x02 \x01(\v2\f.c2.PTYInputH\x00R\x05input\x12'\n" +
@@ -4219,22 +4517,40 @@ const file_proto_c2_proto_rawDesc = "" +
 	"\x05ready\x18\x01 \x01(\bR\x05ready\x12\x18\n" +
 	"\asuccess\x18\x02 \x01(\bR\asuccess\x12\x16\n" +
 	"\x06output\x18\x03 \x01(\tR\x06output\x12\x14\n" +
-	"\x05error\x18\x04 \x01(\tR\x05error\"\x1b\n" +
-	"\x19SessionEventStreamRequest\"\x87\x02\n" +
+	"\x05error\x18\x04 \x01(\tR\x05error\"I\n" +
+	"\x12CommandListRequest\x12\x1d\n" +
+	"\n" +
+	"implant_id\x18\x01 \x01(\tR\timplantId\x12\x14\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\"\xd3\x01\n" +
+	"\vCommandInfo\x12\x1d\n" +
+	"\n" +
+	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x1d\n" +
+	"\n" +
+	"implant_id\x18\x02 \x01(\tR\timplantId\x12\x12\n" +
+	"\x04type\x18\x03 \x01(\tR\x04type\x12\x18\n" +
+	"\acommand\x18\x04 \x01(\tR\acommand\x12\x16\n" +
+	"\x06status\x18\x05 \x01(\tR\x06status\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\x06 \x01(\x03R\tcreatedAt\x12!\n" +
+	"\fcompleted_at\x18\a \x01(\x03R\vcompletedAt\"B\n" +
+	"\x13CommandListResponse\x12+\n" +
+	"\bcommands\x18\x01 \x03(\v2\x0f.c2.CommandInfoR\bcommands\"\x1b\n" +
+	"\x19SessionEventStreamRequest\"\x9b\x02\n" +
 	"\fSessionEvent\x12@\n" +
 	"\n" +
 	"event_type\x18\x01 \x01(\x0e2!.c2.SessionEvent.SessionEventTypeR\teventType\x12)\n" +
 	"\asession\x18\x02 \x01(\v2\x0f.c2.SessionInfoR\asession\x12\x1c\n" +
 	"\ttimestamp\x18\x03 \x01(\x03R\ttimestamp\x12\x18\n" +
-	"\amessage\x18\x04 \x01(\tR\amessage\"R\n" +
+	"\amessage\x18\x04 \x01(\tR\amessage\"f\n" +
 	"\x10SessionEventType\x12\x17\n" +
 	"\x13SESSION_ESTABLISHED\x10\x00\x12\x10\n" +
 	"\fSESSION_LOST\x10\x01\x12\x13\n" +
-	"\x0fSESSION_UPDATED\x10\x02*H\n" +
+	"\x0fSESSION_UPDATED\x10\x02\x12\x12\n" +
+	"\x0eTASK_COMPLETED\x10\x03*H\n" +
 	"\fListenerType\x12\x11\n" +
 	"\rLISTENER_HTTP\x10\x00\x12\x12\n" +
 	"\x0eLISTENER_HTTPS\x10\x01\x12\x11\n" +
-	"\rLISTENER_MTLS\x10\x022\xc9\b\n" +
+	"\rLISTENER_MTLS\x10\x022\x8a\t\n" +
 	"\tC2Service\x12=\n" +
 	"\bRegister\x12\x17.c2.RegistrationRequest\x1a\x18.c2.RegistrationResponse\x129\n" +
 	"\fBeaconStream\x12\x11.c2.BeaconMessage\x1a\x12.c2.CommandMessage(\x010\x01\x12/\n" +
@@ -4246,7 +4562,8 @@ const file_proto_c2_proto_rawDesc = "" +
 	"\fListSessions\x12\x16.c2.SessionListRequest\x1a\x17.c2.SessionListResponse\x12D\n" +
 	"\rDeleteSession\x12\x18.c2.SessionDeleteRequest\x1a\x19.c2.SessionDeleteResponse\x12>\n" +
 	"\vSendCommand\x12\x16.c2.SendCommandRequest\x1a\x17.c2.SendCommandResponse\x12G\n" +
-	"\x10GetCommandResult\x12\x18.c2.CommandResultRequest\x1a\x19.c2.CommandResultResponse\x12;\n" +
+	"\x10GetCommandResult\x12\x18.c2.CommandResultRequest\x1a\x19.c2.CommandResultResponse\x12?\n" +
+	"\fListCommands\x12\x16.c2.CommandListRequest\x1a\x17.c2.CommandListResponse\x12;\n" +
 	"\tPTYStream\x12\x14.c2.PTYClientMessage\x1a\x14.c2.PTYServerMessage(\x010\x01\x12>\n" +
 	"\vAddListener\x12\x16.c2.ListenerAddRequest\x1a\x17.c2.ListenerAddResponse\x12B\n" +
 	"\rListListeners\x12\x17.c2.ListenerListRequest\x1a\x18.c2.ListenerListResponse\x12G\n" +
@@ -4268,7 +4585,7 @@ func file_proto_c2_proto_rawDescGZIP() []byte {
 }
 
 var file_proto_c2_proto_enumTypes = make([]protoimpl.EnumInfo, 7)
-var file_proto_c2_proto_msgTypes = make([]protoimpl.MessageInfo, 51)
+var file_proto_c2_proto_msgTypes = make([]protoimpl.MessageInfo, 55)
 var file_proto_c2_proto_goTypes = []any{
 	(ListenerType)(0),                            // 0: c2.ListenerType
 	(BeaconMessage_BeaconType)(0),                // 1: c2.BeaconMessage.BeaconType
@@ -4281,124 +4598,132 @@ var file_proto_c2_proto_goTypes = []any{
 	(*RegistrationResponse)(nil),                 // 8: c2.RegistrationResponse
 	(*BeaconMessage)(nil),                        // 9: c2.BeaconMessage
 	(*CommandMessage)(nil),                       // 10: c2.CommandMessage
-	(*PTYClientMessage)(nil),                     // 11: c2.PTYClientMessage
-	(*PTYServerMessage)(nil),                     // 12: c2.PTYServerMessage
-	(*PTYOpen)(nil),                              // 13: c2.PTYOpen
-	(*PTYInput)(nil),                             // 14: c2.PTYInput
-	(*PTYResize)(nil),                            // 15: c2.PTYResize
-	(*PTYClose)(nil),                             // 16: c2.PTYClose
-	(*PTYOutput)(nil),                            // 17: c2.PTYOutput
-	(*PTYClosed)(nil),                            // 18: c2.PTYClosed
-	(*PTYError)(nil),                             // 19: c2.PTYError
-	(*ExecuteAssemblyOptions)(nil),               // 20: c2.ExecuteAssemblyOptions
-	(*ExecuteShellcodeOptions)(nil),              // 21: c2.ExecuteShellcodeOptions
-	(*ExecutePEOptions)(nil),                     // 22: c2.ExecutePEOptions
-	(*BOFOptions)(nil),                           // 23: c2.BOFOptions
-	(*Listener)(nil),                             // 24: c2.Listener
-	(*ListenerAddRequest)(nil),                   // 25: c2.ListenerAddRequest
-	(*ListenerAddResponse)(nil),                  // 26: c2.ListenerAddResponse
-	(*ListenerListRequest)(nil),                  // 27: c2.ListenerListRequest
-	(*ListenerListResponse)(nil),                 // 28: c2.ListenerListResponse
-	(*ListenerRemoveRequest)(nil),                // 29: c2.ListenerRemoveRequest
-	(*ListenerRemoveResponse)(nil),               // 30: c2.ListenerRemoveResponse
-	(*ImplantGenerationRequest)(nil),             // 31: c2.ImplantGenerationRequest
-	(*ImplantGenerationResponse)(nil),            // 32: c2.ImplantGenerationResponse
-	(*ImplantConfig)(nil),                        // 33: c2.ImplantConfig
-	(*ImplantBuildsListRequest)(nil),             // 34: c2.ImplantBuildsListRequest
-	(*ImplantBuildsListResponse)(nil),            // 35: c2.ImplantBuildsListResponse
-	(*ImplantBuildInfo)(nil),                     // 36: c2.ImplantBuildInfo
-	(*TaskRequest)(nil),                          // 37: c2.TaskRequest
-	(*TaskResponse)(nil),                         // 38: c2.TaskResponse
-	(*Task)(nil),                                 // 39: c2.Task
-	(*TaskResult)(nil),                           // 40: c2.TaskResult
-	(*TaskAck)(nil),                              // 41: c2.TaskAck
-	(*FileChunk)(nil),                            // 42: c2.FileChunk
-	(*FileRequest)(nil),                          // 43: c2.FileRequest
-	(*FileResponse)(nil),                         // 44: c2.FileResponse
-	(*SessionListRequest)(nil),                   // 45: c2.SessionListRequest
-	(*SessionInfo)(nil),                          // 46: c2.SessionInfo
-	(*SessionListResponse)(nil),                  // 47: c2.SessionListResponse
-	(*SessionDeleteRequest)(nil),                 // 48: c2.SessionDeleteRequest
-	(*SessionDeleteResponse)(nil),                // 49: c2.SessionDeleteResponse
-	(*SendCommandRequest)(nil),                   // 50: c2.SendCommandRequest
-	(*SendCommandResponse)(nil),                  // 51: c2.SendCommandResponse
-	(*CommandResultRequest)(nil),                 // 52: c2.CommandResultRequest
-	(*CommandResultResponse)(nil),                // 53: c2.CommandResultResponse
-	(*SessionEventStreamRequest)(nil),            // 54: c2.SessionEventStreamRequest
-	(*SessionEvent)(nil),                         // 55: c2.SessionEvent
-	nil,                                          // 56: c2.ImplantGenerationRequest.OptionsEntry
-	nil,                                          // 57: c2.ImplantConfig.MetadataEntry
+	(*NetworkScanOptions)(nil),                   // 11: c2.NetworkScanOptions
+	(*PTYClientMessage)(nil),                     // 12: c2.PTYClientMessage
+	(*PTYServerMessage)(nil),                     // 13: c2.PTYServerMessage
+	(*PTYOpen)(nil),                              // 14: c2.PTYOpen
+	(*PTYInput)(nil),                             // 15: c2.PTYInput
+	(*PTYResize)(nil),                            // 16: c2.PTYResize
+	(*PTYClose)(nil),                             // 17: c2.PTYClose
+	(*PTYOutput)(nil),                            // 18: c2.PTYOutput
+	(*PTYClosed)(nil),                            // 19: c2.PTYClosed
+	(*PTYError)(nil),                             // 20: c2.PTYError
+	(*ExecuteAssemblyOptions)(nil),               // 21: c2.ExecuteAssemblyOptions
+	(*ExecuteShellcodeOptions)(nil),              // 22: c2.ExecuteShellcodeOptions
+	(*ExecutePEOptions)(nil),                     // 23: c2.ExecutePEOptions
+	(*BOFOptions)(nil),                           // 24: c2.BOFOptions
+	(*Listener)(nil),                             // 25: c2.Listener
+	(*ListenerAddRequest)(nil),                   // 26: c2.ListenerAddRequest
+	(*ListenerAddResponse)(nil),                  // 27: c2.ListenerAddResponse
+	(*ListenerListRequest)(nil),                  // 28: c2.ListenerListRequest
+	(*ListenerListResponse)(nil),                 // 29: c2.ListenerListResponse
+	(*ListenerRemoveRequest)(nil),                // 30: c2.ListenerRemoveRequest
+	(*ListenerRemoveResponse)(nil),               // 31: c2.ListenerRemoveResponse
+	(*ImplantGenerationRequest)(nil),             // 32: c2.ImplantGenerationRequest
+	(*ImplantGenerationResponse)(nil),            // 33: c2.ImplantGenerationResponse
+	(*ImplantConfig)(nil),                        // 34: c2.ImplantConfig
+	(*ImplantBuildsListRequest)(nil),             // 35: c2.ImplantBuildsListRequest
+	(*ImplantBuildsListResponse)(nil),            // 36: c2.ImplantBuildsListResponse
+	(*ImplantBuildInfo)(nil),                     // 37: c2.ImplantBuildInfo
+	(*TaskRequest)(nil),                          // 38: c2.TaskRequest
+	(*TaskResponse)(nil),                         // 39: c2.TaskResponse
+	(*Task)(nil),                                 // 40: c2.Task
+	(*TaskResult)(nil),                           // 41: c2.TaskResult
+	(*TaskAck)(nil),                              // 42: c2.TaskAck
+	(*FileChunk)(nil),                            // 43: c2.FileChunk
+	(*FileRequest)(nil),                          // 44: c2.FileRequest
+	(*FileResponse)(nil),                         // 45: c2.FileResponse
+	(*SessionListRequest)(nil),                   // 46: c2.SessionListRequest
+	(*SessionInfo)(nil),                          // 47: c2.SessionInfo
+	(*SessionListResponse)(nil),                  // 48: c2.SessionListResponse
+	(*SessionDeleteRequest)(nil),                 // 49: c2.SessionDeleteRequest
+	(*SessionDeleteResponse)(nil),                // 50: c2.SessionDeleteResponse
+	(*SendCommandRequest)(nil),                   // 51: c2.SendCommandRequest
+	(*SendCommandResponse)(nil),                  // 52: c2.SendCommandResponse
+	(*CommandResultRequest)(nil),                 // 53: c2.CommandResultRequest
+	(*CommandResultResponse)(nil),                // 54: c2.CommandResultResponse
+	(*CommandListRequest)(nil),                   // 55: c2.CommandListRequest
+	(*CommandInfo)(nil),                          // 56: c2.CommandInfo
+	(*CommandListResponse)(nil),                  // 57: c2.CommandListResponse
+	(*SessionEventStreamRequest)(nil),            // 58: c2.SessionEventStreamRequest
+	(*SessionEvent)(nil),                         // 59: c2.SessionEvent
+	nil,                                          // 60: c2.ImplantGenerationRequest.OptionsEntry
+	nil,                                          // 61: c2.ImplantConfig.MetadataEntry
 }
 var file_proto_c2_proto_depIdxs = []int32{
 	1,  // 0: c2.BeaconMessage.type:type_name -> c2.BeaconMessage.BeaconType
 	2,  // 1: c2.CommandMessage.type:type_name -> c2.CommandMessage.CommandType
-	20, // 2: c2.CommandMessage.execute_assembly_options:type_name -> c2.ExecuteAssemblyOptions
-	21, // 3: c2.CommandMessage.execute_shellcode_options:type_name -> c2.ExecuteShellcodeOptions
-	22, // 4: c2.CommandMessage.execute_pe_options:type_name -> c2.ExecutePEOptions
-	23, // 5: c2.CommandMessage.bof_options:type_name -> c2.BOFOptions
-	13, // 6: c2.PTYClientMessage.open:type_name -> c2.PTYOpen
-	14, // 7: c2.PTYClientMessage.input:type_name -> c2.PTYInput
-	15, // 8: c2.PTYClientMessage.resize:type_name -> c2.PTYResize
-	16, // 9: c2.PTYClientMessage.close:type_name -> c2.PTYClose
-	17, // 10: c2.PTYServerMessage.output:type_name -> c2.PTYOutput
-	18, // 11: c2.PTYServerMessage.closed:type_name -> c2.PTYClosed
-	19, // 12: c2.PTYServerMessage.error:type_name -> c2.PTYError
-	3,  // 13: c2.ExecuteAssemblyOptions.method:type_name -> c2.ExecuteAssemblyOptions.ExecutionMethod
-	4,  // 14: c2.ExecuteShellcodeOptions.method:type_name -> c2.ExecuteShellcodeOptions.ExecutionMethod
-	5,  // 15: c2.BOFOptions.method:type_name -> c2.BOFOptions.ExecutionMethod
-	0,  // 16: c2.Listener.type:type_name -> c2.ListenerType
-	0,  // 17: c2.ListenerAddRequest.type:type_name -> c2.ListenerType
-	24, // 18: c2.ListenerAddResponse.listener:type_name -> c2.Listener
-	24, // 19: c2.ListenerListResponse.listeners:type_name -> c2.Listener
-	56, // 20: c2.ImplantGenerationRequest.options:type_name -> c2.ImplantGenerationRequest.OptionsEntry
-	33, // 21: c2.ImplantGenerationResponse.config:type_name -> c2.ImplantConfig
-	57, // 22: c2.ImplantConfig.metadata:type_name -> c2.ImplantConfig.MetadataEntry
-	36, // 23: c2.ImplantBuildsListResponse.builds:type_name -> c2.ImplantBuildInfo
-	39, // 24: c2.TaskResponse.tasks:type_name -> c2.Task
-	2,  // 25: c2.Task.type:type_name -> c2.CommandMessage.CommandType
-	46, // 26: c2.SessionListResponse.sessions:type_name -> c2.SessionInfo
-	10, // 27: c2.SendCommandRequest.command:type_name -> c2.CommandMessage
-	6,  // 28: c2.SessionEvent.event_type:type_name -> c2.SessionEvent.SessionEventType
-	46, // 29: c2.SessionEvent.session:type_name -> c2.SessionInfo
-	7,  // 30: c2.C2Service.Register:input_type -> c2.RegistrationRequest
-	9,  // 31: c2.C2Service.BeaconStream:input_type -> c2.BeaconMessage
-	42, // 32: c2.C2Service.UploadFile:input_type -> c2.FileChunk
-	43, // 33: c2.C2Service.DownloadFile:input_type -> c2.FileRequest
-	37, // 34: c2.C2Service.GetTasks:input_type -> c2.TaskRequest
-	40, // 35: c2.C2Service.SubmitResult:input_type -> c2.TaskResult
-	45, // 36: c2.C2Service.ListSessions:input_type -> c2.SessionListRequest
-	48, // 37: c2.C2Service.DeleteSession:input_type -> c2.SessionDeleteRequest
-	50, // 38: c2.C2Service.SendCommand:input_type -> c2.SendCommandRequest
-	52, // 39: c2.C2Service.GetCommandResult:input_type -> c2.CommandResultRequest
-	11, // 40: c2.C2Service.PTYStream:input_type -> c2.PTYClientMessage
-	25, // 41: c2.C2Service.AddListener:input_type -> c2.ListenerAddRequest
-	27, // 42: c2.C2Service.ListListeners:input_type -> c2.ListenerListRequest
-	29, // 43: c2.C2Service.RemoveListener:input_type -> c2.ListenerRemoveRequest
-	31, // 44: c2.C2Service.GenerateImplant:input_type -> c2.ImplantGenerationRequest
-	34, // 45: c2.C2Service.ListImplantBuilds:input_type -> c2.ImplantBuildsListRequest
-	54, // 46: c2.C2Service.SessionEventStream:input_type -> c2.SessionEventStreamRequest
-	8,  // 47: c2.C2Service.Register:output_type -> c2.RegistrationResponse
-	10, // 48: c2.C2Service.BeaconStream:output_type -> c2.CommandMessage
-	44, // 49: c2.C2Service.UploadFile:output_type -> c2.FileResponse
-	42, // 50: c2.C2Service.DownloadFile:output_type -> c2.FileChunk
-	38, // 51: c2.C2Service.GetTasks:output_type -> c2.TaskResponse
-	41, // 52: c2.C2Service.SubmitResult:output_type -> c2.TaskAck
-	47, // 53: c2.C2Service.ListSessions:output_type -> c2.SessionListResponse
-	49, // 54: c2.C2Service.DeleteSession:output_type -> c2.SessionDeleteResponse
-	51, // 55: c2.C2Service.SendCommand:output_type -> c2.SendCommandResponse
-	53, // 56: c2.C2Service.GetCommandResult:output_type -> c2.CommandResultResponse
-	12, // 57: c2.C2Service.PTYStream:output_type -> c2.PTYServerMessage
-	26, // 58: c2.C2Service.AddListener:output_type -> c2.ListenerAddResponse
-	28, // 59: c2.C2Service.ListListeners:output_type -> c2.ListenerListResponse
-	30, // 60: c2.C2Service.RemoveListener:output_type -> c2.ListenerRemoveResponse
-	32, // 61: c2.C2Service.GenerateImplant:output_type -> c2.ImplantGenerationResponse
-	35, // 62: c2.C2Service.ListImplantBuilds:output_type -> c2.ImplantBuildsListResponse
-	55, // 63: c2.C2Service.SessionEventStream:output_type -> c2.SessionEvent
-	47, // [47:64] is the sub-list for method output_type
-	30, // [30:47] is the sub-list for method input_type
-	30, // [30:30] is the sub-list for extension type_name
-	30, // [30:30] is the sub-list for extension extendee
-	0,  // [0:30] is the sub-list for field type_name
+	21, // 2: c2.CommandMessage.execute_assembly_options:type_name -> c2.ExecuteAssemblyOptions
+	22, // 3: c2.CommandMessage.execute_shellcode_options:type_name -> c2.ExecuteShellcodeOptions
+	23, // 4: c2.CommandMessage.execute_pe_options:type_name -> c2.ExecutePEOptions
+	24, // 5: c2.CommandMessage.bof_options:type_name -> c2.BOFOptions
+	11, // 6: c2.CommandMessage.network_scan_options:type_name -> c2.NetworkScanOptions
+	14, // 7: c2.PTYClientMessage.open:type_name -> c2.PTYOpen
+	15, // 8: c2.PTYClientMessage.input:type_name -> c2.PTYInput
+	16, // 9: c2.PTYClientMessage.resize:type_name -> c2.PTYResize
+	17, // 10: c2.PTYClientMessage.close:type_name -> c2.PTYClose
+	18, // 11: c2.PTYServerMessage.output:type_name -> c2.PTYOutput
+	19, // 12: c2.PTYServerMessage.closed:type_name -> c2.PTYClosed
+	20, // 13: c2.PTYServerMessage.error:type_name -> c2.PTYError
+	3,  // 14: c2.ExecuteAssemblyOptions.method:type_name -> c2.ExecuteAssemblyOptions.ExecutionMethod
+	4,  // 15: c2.ExecuteShellcodeOptions.method:type_name -> c2.ExecuteShellcodeOptions.ExecutionMethod
+	5,  // 16: c2.BOFOptions.method:type_name -> c2.BOFOptions.ExecutionMethod
+	0,  // 17: c2.Listener.type:type_name -> c2.ListenerType
+	0,  // 18: c2.ListenerAddRequest.type:type_name -> c2.ListenerType
+	25, // 19: c2.ListenerAddResponse.listener:type_name -> c2.Listener
+	25, // 20: c2.ListenerListResponse.listeners:type_name -> c2.Listener
+	60, // 21: c2.ImplantGenerationRequest.options:type_name -> c2.ImplantGenerationRequest.OptionsEntry
+	34, // 22: c2.ImplantGenerationResponse.config:type_name -> c2.ImplantConfig
+	61, // 23: c2.ImplantConfig.metadata:type_name -> c2.ImplantConfig.MetadataEntry
+	37, // 24: c2.ImplantBuildsListResponse.builds:type_name -> c2.ImplantBuildInfo
+	40, // 25: c2.TaskResponse.tasks:type_name -> c2.Task
+	2,  // 26: c2.Task.type:type_name -> c2.CommandMessage.CommandType
+	47, // 27: c2.SessionListResponse.sessions:type_name -> c2.SessionInfo
+	10, // 28: c2.SendCommandRequest.command:type_name -> c2.CommandMessage
+	56, // 29: c2.CommandListResponse.commands:type_name -> c2.CommandInfo
+	6,  // 30: c2.SessionEvent.event_type:type_name -> c2.SessionEvent.SessionEventType
+	47, // 31: c2.SessionEvent.session:type_name -> c2.SessionInfo
+	7,  // 32: c2.C2Service.Register:input_type -> c2.RegistrationRequest
+	9,  // 33: c2.C2Service.BeaconStream:input_type -> c2.BeaconMessage
+	43, // 34: c2.C2Service.UploadFile:input_type -> c2.FileChunk
+	44, // 35: c2.C2Service.DownloadFile:input_type -> c2.FileRequest
+	38, // 36: c2.C2Service.GetTasks:input_type -> c2.TaskRequest
+	41, // 37: c2.C2Service.SubmitResult:input_type -> c2.TaskResult
+	46, // 38: c2.C2Service.ListSessions:input_type -> c2.SessionListRequest
+	49, // 39: c2.C2Service.DeleteSession:input_type -> c2.SessionDeleteRequest
+	51, // 40: c2.C2Service.SendCommand:input_type -> c2.SendCommandRequest
+	53, // 41: c2.C2Service.GetCommandResult:input_type -> c2.CommandResultRequest
+	55, // 42: c2.C2Service.ListCommands:input_type -> c2.CommandListRequest
+	12, // 43: c2.C2Service.PTYStream:input_type -> c2.PTYClientMessage
+	26, // 44: c2.C2Service.AddListener:input_type -> c2.ListenerAddRequest
+	28, // 45: c2.C2Service.ListListeners:input_type -> c2.ListenerListRequest
+	30, // 46: c2.C2Service.RemoveListener:input_type -> c2.ListenerRemoveRequest
+	32, // 47: c2.C2Service.GenerateImplant:input_type -> c2.ImplantGenerationRequest
+	35, // 48: c2.C2Service.ListImplantBuilds:input_type -> c2.ImplantBuildsListRequest
+	58, // 49: c2.C2Service.SessionEventStream:input_type -> c2.SessionEventStreamRequest
+	8,  // 50: c2.C2Service.Register:output_type -> c2.RegistrationResponse
+	10, // 51: c2.C2Service.BeaconStream:output_type -> c2.CommandMessage
+	45, // 52: c2.C2Service.UploadFile:output_type -> c2.FileResponse
+	43, // 53: c2.C2Service.DownloadFile:output_type -> c2.FileChunk
+	39, // 54: c2.C2Service.GetTasks:output_type -> c2.TaskResponse
+	42, // 55: c2.C2Service.SubmitResult:output_type -> c2.TaskAck
+	48, // 56: c2.C2Service.ListSessions:output_type -> c2.SessionListResponse
+	50, // 57: c2.C2Service.DeleteSession:output_type -> c2.SessionDeleteResponse
+	52, // 58: c2.C2Service.SendCommand:output_type -> c2.SendCommandResponse
+	54, // 59: c2.C2Service.GetCommandResult:output_type -> c2.CommandResultResponse
+	57, // 60: c2.C2Service.ListCommands:output_type -> c2.CommandListResponse
+	13, // 61: c2.C2Service.PTYStream:output_type -> c2.PTYServerMessage
+	27, // 62: c2.C2Service.AddListener:output_type -> c2.ListenerAddResponse
+	29, // 63: c2.C2Service.ListListeners:output_type -> c2.ListenerListResponse
+	31, // 64: c2.C2Service.RemoveListener:output_type -> c2.ListenerRemoveResponse
+	33, // 65: c2.C2Service.GenerateImplant:output_type -> c2.ImplantGenerationResponse
+	36, // 66: c2.C2Service.ListImplantBuilds:output_type -> c2.ImplantBuildsListResponse
+	59, // 67: c2.C2Service.SessionEventStream:output_type -> c2.SessionEvent
+	50, // [50:68] is the sub-list for method output_type
+	32, // [32:50] is the sub-list for method input_type
+	32, // [32:32] is the sub-list for extension type_name
+	32, // [32:32] is the sub-list for extension extendee
+	0,  // [0:32] is the sub-list for field type_name
 }
 
 func init() { file_proto_c2_proto_init() }
@@ -4406,13 +4731,13 @@ func file_proto_c2_proto_init() {
 	if File_proto_c2_proto != nil {
 		return
 	}
-	file_proto_c2_proto_msgTypes[4].OneofWrappers = []any{
+	file_proto_c2_proto_msgTypes[5].OneofWrappers = []any{
 		(*PTYClientMessage_Open)(nil),
 		(*PTYClientMessage_Input)(nil),
 		(*PTYClientMessage_Resize)(nil),
 		(*PTYClientMessage_Close)(nil),
 	}
-	file_proto_c2_proto_msgTypes[5].OneofWrappers = []any{
+	file_proto_c2_proto_msgTypes[6].OneofWrappers = []any{
 		(*PTYServerMessage_Output)(nil),
 		(*PTYServerMessage_Closed)(nil),
 		(*PTYServerMessage_Error)(nil),
@@ -4423,7 +4748,7 @@ func file_proto_c2_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_c2_proto_rawDesc), len(file_proto_c2_proto_rawDesc)),
 			NumEnums:      7,
-			NumMessages:   51,
+			NumMessages:   55,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

