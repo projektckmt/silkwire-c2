@@ -73,8 +73,13 @@ func (oc *OperatorConsole) startLocalPtyShell(implantID string) {
 				return
 			}
 			if err != nil {
-				if strings.Contains(err.Error(), "no active stream for implant") {
-					fmt.Printf("\r\n%s Stream disconnected. Implant may be reconnecting...\r\n", colorize("[*]", colorYellow))
+				if strings.Contains(err.Error(), "no active stream") {
+					if strings.Contains(err.Error(), "polling") {
+						fmt.Printf("\r\n%s Implant is in polling mode - interactive shell requires stream mode.\r\n", colorize("[!]", colorYellow))
+						fmt.Printf("%s Use 'exec' command instead for non-interactive commands.\r\n", colorize("[*]", colorBlue))
+					} else {
+						fmt.Printf("\r\n%s Stream disconnected. Implant may be reconnecting...\r\n", colorize("[*]", colorYellow))
+					}
 				} else {
 					fmt.Printf("\r\n%s PTY recv error: %v\r\n", colorize("[*]", colorBlue), err)
 				}

