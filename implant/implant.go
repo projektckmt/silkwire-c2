@@ -83,9 +83,13 @@ func (i *Implant) Connect() error {
 		)
 	} else if TransportType == "HTTPS" {
 		// For HTTPS transport, use TLS without client certificates
+		// Use same TLS settings as mTLS for consistency (required for stable gRPC streams)
 		config := &tls.Config{
-			// Use standard TLS settings for HTTPS
 			MinVersion: tls.VersionTLS12,
+			MaxVersion: tls.VersionTLS12,
+			CipherSuites: []uint16{
+				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+			},
 		}
 
 		// Configure server certificate verification

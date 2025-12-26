@@ -382,9 +382,15 @@ func (s *C2Server) AddListener(ctx context.Context, req *pb.ListenerAddRequest) 
 			logrus.Infof("Starting mTLS listener with automatic CA-based certificate management")
 		} else {
 			// Regular HTTPS without client certificates
+			// Use same TLS settings as mTLS for consistency (required for stable gRPC streams)
 			tlsCfg = &tls.Config{
 				Certificates: []tls.Certificate{cert},
 				ClientAuth:   tls.NoClientCert,
+				MinVersion:   tls.VersionTLS12,
+				MaxVersion:   tls.VersionTLS12,
+				CipherSuites: []uint16{
+					tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+				},
 			}
 		}
 		creds := credentials.NewTLS(tlsCfg)
@@ -404,7 +410,16 @@ func (s *C2Server) AddListener(ctx context.Context, req *pb.ListenerAddRequest) 
 			}
 			logrus.Infof("Loaded persistent CA-signed server certificate for default listener %s", addr)
 		}
-		creds := credentials.NewTLS(&tls.Config{Certificates: []tls.Certificate{cert}, ClientAuth: tls.NoClientCert})
+		// Use same TLS settings as mTLS for consistency (required for stable gRPC streams)
+		creds := credentials.NewTLS(&tls.Config{
+			Certificates: []tls.Certificate{cert},
+			ClientAuth:   tls.NoClientCert,
+			MinVersion:   tls.VersionTLS12,
+			MaxVersion:   tls.VersionTLS12,
+			CipherSuites: []uint16{
+				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+			},
+		})
 		serverOptions = append(serverOptions, grpc.Creds(creds), grpc.MaxRecvMsgSize(64<<20), grpc.MaxSendMsgSize(64<<20))
 		g = grpc.NewServer(serverOptions...)
 	}
