@@ -713,6 +713,115 @@ func printJobsTable(commands []*pb.CommandInfo) {
 	fmt.Println()
 }
 
+// displayBroadcastResults displays the results of a broadcast command in a table
+func displayBroadcastResults(resp *pb.BroadcastCommandResponse) {
+	if resp == nil {
+		return
+	}
+
+	fmt.Printf("\n%s %s\n", colorize("[+]", colorGreen), resp.Message)
+	fmt.Printf("%s Broadcast ID: %s\n\n", colorize("[*]", colorBlue), colorize(resp.BroadcastId, colorCyan))
+
+	if len(resp.Results) == 0 {
+		fmt.Println(colorize("No session results to display", colorYellow))
+		return
+	}
+
+	// Create a new table
+	t := termtable.NewTable(nil, &termtable.TableOptions{
+		Padding:      2,
+		UseSeparator: false,
+	})
+
+	// Set headers with colors
+	t.SetHeader([]string{
+		colorize("Session", colorBlue),
+		colorize("Hostname", colorBlue),
+		colorize("Status", colorBlue),
+		colorize("Command ID", colorBlue),
+		colorize("Output", colorBlue),
+	})
+
+	// Add rows with result data
+	for _, result := range resp.Results {
+		// Truncate implant ID to 8 chars
+		shortID := result.ImplantId
+		if len(shortID) > 8 {
+			shortID = shortID[:8]
+		}
+
+		// Use codename if available
+		displayName := shortID
+		if result.Codename != "" {
+			displayName = result.Codename
+		}
+
+		// Color-code status
+		var statusColor string
+		switch result.Status {
+		case "completed":
+			statusColor = colorGreen
+		case "sent", "queued":
+			statusColor = colorCyan
+		case "failed":
+			statusColor = colorRed
+		default:
+			statusColor = colorYellow
+		}
+
+		// Show full command ID so users can copy it
+		cmdID := result.CommandId
+
+		// Truncate output for table display
+		output := result.Output
+		if len(output) > 40 {
+			output = output[:37] + "..."
+		}
+		// Replace newlines with spaces for single-line display
+		output = strings.ReplaceAll(output, "\n", " ")
+		output = strings.ReplaceAll(output, "\r", "")
+
+		// Show error if present and no output
+		if output == "" && result.Error != "" {
+			output = colorize(result.Error, colorRed)
+			if len(result.Error) > 40 {
+				output = colorize(result.Error[:37]+"...", colorRed)
+			}
+		}
+
+		// Show pending indicator for sent/queued
+		if output == "" && (result.Status == "sent" || result.Status == "queued") {
+			output = colorize("(pending)", colorDarkGray)
+		}
+
+		t.AddRow([]string{
+			displayName,
+			result.Hostname,
+			colorize(result.Status, statusColor),
+			cmdID,
+			output,
+		})
+	}
+
+	// Print the table
+	fmt.Println(t.Render())
+
+	// Print summary
+	fmt.Printf("\n%s Sent: %s | Failed: %s | Total: %s\n",
+		colorize("Summary:", colorCyan),
+		colorize(fmt.Sprintf("%d", resp.CommandsSent), colorGreen),
+		colorize(fmt.Sprintf("%d", resp.CommandsFailed), colorRed),
+		colorize(fmt.Sprintf("%d", resp.TotalSessions), colorBlue))
+
+	// Print hint for getting full output
+	if resp.CommandsSent > 0 {
+		fmt.Printf("%s Use 'results <command_id>' to get output, or add %s to wait for results\n",
+			colorize("[*]", colorBlue),
+			colorize("--wait", colorYellow))
+	}
+	fmt.Println()
+}
+
 // truncateString truncates a string to fit within the specified width
 func truncateString(s string, width int) string {
 	if len(s) <= width {

