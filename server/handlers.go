@@ -1668,7 +1668,12 @@ func (s *C2Server) filterSessions(filter *pb.BroadcastFilter) []*Session {
 
 // sessionMatchesFilter checks if a session matches the given filter criteria
 func (s *C2Server) sessionMatchesFilter(session *Session, filter *pb.BroadcastFilter) bool {
-	// If no filter provided, match all sessions
+	// Always exclude "lost" sessions (last seen > 10 minutes ago)
+	if time.Since(session.LastSeen) > 10*time.Minute {
+		return false
+	}
+
+	// If no filter provided, match all active sessions
 	if filter == nil {
 		return true
 	}
