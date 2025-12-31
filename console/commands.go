@@ -2408,7 +2408,7 @@ func (oc *OperatorConsole) handleExecutePE(implantID string, args []string) {
 }
 
 // handleBroadcastCommand executes a command across multiple sessions with filtering
-func (oc *OperatorConsole) handleBroadcastCommand(command, osFilter, hostnameFilter, transportFilter string, timeout int32, dryRun, wait, isScript bool, scriptExtension string) {
+func (oc *OperatorConsole) handleBroadcastCommand(command, osFilter, hostnameFilter, transportFilter string, timeout int32, dryRun, wait, isScript bool, scriptExtension, outputFile string) {
 	if oc.client == nil {
 		fmt.Printf("%s Not connected to server\n", colorize("[!]", colorRed))
 		return
@@ -2486,6 +2486,54 @@ func (oc *OperatorConsole) handleBroadcastCommand(command, osFilter, hostnameFil
 
 	// Display results
 	displayBroadcastResults(resp)
+
+	// Write full outputs to file if specified
+	if outputFile != "" && len(resp.Results) > 0 {
+		oc.writeBroadcastOutputsToFile(resp, outputFile)
+	}
+}
+
+// writeBroadcastOutputsToFile writes the full broadcast outputs to a file
+func (oc *OperatorConsole) writeBroadcastOutputsToFile(resp *pb.BroadcastCommandResponse, outputFile string) {
+	f, err := os.Create(outputFile)
+	if err != nil {
+		fmt.Printf("%s Failed to create output file: %v\n", colorize("[!]", colorRed), err)
+		return
+	}
+	defer f.Close()
+
+	// Write header
+	fmt.Fprintf(f, "=== Broadcast Results ===\n")
+	fmt.Fprintf(f, "Broadcast ID: %s\n", resp.BroadcastId)
+	fmt.Fprintf(f, "Total Sessions: %d\n", resp.TotalSessions)
+	fmt.Fprintf(f, "Commands Sent: %d\n", resp.CommandsSent)
+	fmt.Fprintf(f, "Commands Failed: %d\n", resp.CommandsFailed)
+	fmt.Fprintf(f, "Generated: %s\n", time.Now().Format(time.RFC3339))
+	fmt.Fprintf(f, "\n")
+
+	// Write each session's output
+	for i, result := range resp.Results {
+		fmt.Fprintf(f, "=== Session %d/%d ===\n", i+1, len(resp.Results))
+		fmt.Fprintf(f, "Implant ID: %s\n", result.ImplantId)
+		if result.Codename != "" {
+			fmt.Fprintf(f, "Codename: %s\n", result.Codename)
+		}
+		fmt.Fprintf(f, "Hostname: %s\n", result.Hostname)
+		fmt.Fprintf(f, "Status: %s\n", result.Status)
+		fmt.Fprintf(f, "Command ID: %s\n", result.CommandId)
+		if result.Error != "" {
+			fmt.Fprintf(f, "Error: %s\n", result.Error)
+		}
+		fmt.Fprintf(f, "\n--- Output ---\n")
+		if result.Output != "" {
+			fmt.Fprintf(f, "%s\n", result.Output)
+		} else {
+			fmt.Fprintf(f, "(no output)\n")
+		}
+		fmt.Fprintf(f, "\n")
+	}
+
+	fmt.Printf("%s Full outputs written to: %s\n", colorize("[+]", colorGreen), outputFile)
 }
 
 // showMatchingSessions displays sessions that would match the given filter

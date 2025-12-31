@@ -1314,6 +1314,7 @@ Flags:
   -H, --hostname <pattern>   Hostname regex pattern
   -t, --transport <type>     Filter by transport (HTTP/HTTPS/mTLS)
   -f, --script <file>        Execute script from file instead of command
+  -O, --output <file>        Write full outputs to file (use with --wait)
   --timeout <seconds>        Command timeout (default: 60)
   --dry-run                  Show matching sessions without executing
   --wait                     Wait and collect results before returning`,
@@ -1325,8 +1326,8 @@ Flags:
 			if len(args) > 0 {
 				prevArg := args[len(args)-1]
 
-				// File completions for -f/--script
-				if prevArg == "-f" || prevArg == "--script" {
+				// File completions for -f/--script or -O/--output
+				if prevArg == "-f" || prevArg == "--script" || prevArg == "-O" || prevArg == "--output" {
 					return getFileCompletions(toComplete), cobra.ShellCompDirectiveNoSpace
 				}
 
@@ -1360,6 +1361,7 @@ Flags:
 					"-H", "--hostname",
 					"-t", "--transport",
 					"-f", "--script",
+					"-O", "--output",
 					"--timeout",
 					"--dry-run",
 					"--wait",
@@ -1375,7 +1377,7 @@ Flags:
 		},
 		Run: func(cmd *cobra.Command, args []string) {
 			// Parse flags manually
-			var osFilter, hostnameFilter, transportFilter, scriptFile string
+			var osFilter, hostnameFilter, transportFilter, scriptFile, outputFile string
 			var timeout int32 = 60
 			var dryRun, wait bool
 			var commandArgs []string
@@ -1401,6 +1403,11 @@ Flags:
 				case arg == "-f" || arg == "--script":
 					if i+1 < len(args) {
 						scriptFile = args[i+1]
+						i++
+					}
+				case arg == "-O" || arg == "--output":
+					if i+1 < len(args) {
+						outputFile = args[i+1]
 						i++
 					}
 				case arg == "--timeout":
@@ -1455,7 +1462,7 @@ Flags:
 				return
 			}
 
-			ocGlobal.handleBroadcastCommand(command, osFilter, hostnameFilter, transportFilter, timeout, dryRun, wait, isScript, scriptExtension)
+			ocGlobal.handleBroadcastCommand(command, osFilter, hostnameFilter, transportFilter, timeout, dryRun, wait, isScript, scriptExtension, outputFile)
 		},
 	}
 	rootCmd.AddCommand(broadcastCmd)
