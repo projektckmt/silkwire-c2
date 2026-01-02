@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -39,6 +40,7 @@ var (
 	generateCmd    *cobra.Command
 	regenerateCmd  *cobra.Command
 	implantsCmd    *cobra.Command
+	broadcastCmd   *cobra.Command
 
 	serverAddrFlag   string
 	basicConsoleFlag bool
@@ -1288,6 +1290,203 @@ Examples:
 	}
 	regenerateCmd.Flags().String("save", "", "Directory to save the regenerated implant")
 	rootCmd.AddCommand(regenerateCmd)
+
+	// broadcast command - execute command across multiple sessions
+	broadcastCmd = &cobra.Command{
+		Use:   "broadcast [flags] <command>",
+		Short: "Execute shell command across multiple sessions",
+		Long: `Execute a shell command across multiple sessions with optional filtering.
+
+Filter sessions by OS, hostname pattern, or transport type. Results are
+displayed in an aggregated table showing each session's status and output.
+
+Examples:
+  broadcast whoami                            Execute on all sessions
+  broadcast -o windows hostname               Execute on Windows sessions only
+  broadcast -o linux -H "web-.*" uptime       Execute on Linux web servers
+  broadcast --dry-run -o windows dir          Show matching sessions without executing
+  broadcast --wait systeminfo                 Wait and collect results before returning
+  broadcast -f /path/to/script.sh             Execute a script file on all sessions
+  broadcast -f script.ps1 -o windows          Execute PowerShell script on Windows
+
+Flags:
+  -o, --os <os>              Filter by OS (windows/linux/darwin)
+  -H, --hostname <pattern>   Hostname regex pattern
+  -t, --transport <type>     Filter by transport (HTTP/HTTPS/mTLS)
+  -f, --script <file>        Execute script from file instead of command
+  -O, --output <file>        Write full outputs to file (use with --wait)
+  --timeout <seconds>        Command timeout (default: 60)
+  --dry-run                  Show matching sessions without executing
+  --wait                     Wait and collect results before returning`,
+		DisableFlagParsing: true, // Parse flags manually to avoid reeflective console issues
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			var completions []string
+
+			// Check previous arg for context-specific completions
+			if len(args) > 0 {
+				prevArg := args[len(args)-1]
+
+				// File completions for -f/--script or -O/--output
+				if prevArg == "-f" || prevArg == "--script" || prevArg == "-O" || prevArg == "--output" {
+					return getFileCompletions(toComplete), cobra.ShellCompDirectiveNoSpace
+				}
+
+				// OS completions
+				if prevArg == "-o" || prevArg == "--os" {
+					osOptions := []string{"windows", "linux", "darwin"}
+					for _, opt := range osOptions {
+						if strings.HasPrefix(opt, toComplete) {
+							completions = append(completions, opt)
+						}
+					}
+					return completions, cobra.ShellCompDirectiveNoFileComp
+				}
+
+				// Transport completions
+				if prevArg == "-t" || prevArg == "--transport" {
+					transportOptions := []string{"HTTP", "HTTPS", "mTLS"}
+					for _, opt := range transportOptions {
+						if strings.HasPrefix(opt, toComplete) || strings.HasPrefix(strings.ToLower(opt), strings.ToLower(toComplete)) {
+							completions = append(completions, opt)
+						}
+					}
+					return completions, cobra.ShellCompDirectiveNoFileComp
+				}
+			}
+
+			// Suggest flags if typing a dash
+			if strings.HasPrefix(toComplete, "-") || toComplete == "" {
+				flags := []string{
+					"-o", "--os",
+					"-H", "--hostname",
+					"-t", "--transport",
+					"-f", "--script",
+					"-O", "--output",
+					"--timeout",
+					"--dry-run",
+					"--wait",
+				}
+				for _, flag := range flags {
+					if strings.HasPrefix(flag, toComplete) {
+						completions = append(completions, flag)
+					}
+				}
+			}
+
+			return completions, cobra.ShellCompDirectiveNoFileComp
+		},
+		Run: func(cmd *cobra.Command, args []string) {
+			// Parse flags manually
+			var osFilter, hostnameFilter, transportFilter, scriptFile, outputFile string
+			var timeout int32 = 60
+			var dryRun, wait bool
+			var commandArgs []string
+
+			for i := 0; i < len(args); i++ {
+				arg := args[i]
+				switch {
+				case arg == "-o" || arg == "--os":
+					if i+1 < len(args) {
+						osFilter = args[i+1]
+						i++
+					}
+				case arg == "-H" || arg == "--hostname":
+					if i+1 < len(args) {
+						hostnameFilter = args[i+1]
+						i++
+					}
+				case arg == "-t" || arg == "--transport":
+					if i+1 < len(args) {
+						transportFilter = args[i+1]
+						i++
+					}
+				case arg == "-f" || arg == "--script":
+					if i+1 < len(args) {
+						scriptFile = args[i+1]
+						i++
+					}
+				case arg == "-O" || arg == "--output":
+					if i+1 < len(args) {
+						outputFile = args[i+1]
+						i++
+					}
+				case arg == "--timeout":
+					if i+1 < len(args) {
+						if t, err := strconv.ParseInt(args[i+1], 10, 32); err == nil {
+							timeout = int32(t)
+						}
+						i++
+					}
+				case arg == "--dry-run":
+					dryRun = true
+				case arg == "--wait":
+					wait = true
+				case arg == "-h" || arg == "--help":
+					cmd.Help()
+					return
+				default:
+					// Everything else is part of the command
+					commandArgs = append(commandArgs, arg)
+				}
+			}
+
+			var command string
+			var isScript bool
+			var scriptExtension string
+
+			// If script file is specified, read it
+			if scriptFile != "" {
+				content, err := os.ReadFile(scriptFile)
+				if err != nil {
+					fmt.Printf("%s Failed to read script file: %v\n", colorize("[!]", colorRed), err)
+					return
+				}
+				command = string(content)
+				isScript = true
+
+				// Extract file extension
+				ext := filepath.Ext(scriptFile)
+				if len(ext) > 1 {
+					scriptExtension = ext[1:] // Remove the leading dot
+				}
+
+				fmt.Printf("%s Loaded script from: %s (%d bytes, type: %s)\n",
+					colorize("[*]", colorBlue), scriptFile, len(content), scriptExtension)
+			} else if len(commandArgs) > 0 {
+				command = strings.Join(commandArgs, " ")
+			} else {
+				fmt.Printf("%s Usage: broadcast [flags] <command>\n", colorize("[!]", colorRed))
+				fmt.Printf("%s        broadcast -f <script_file> [flags]\n", colorize("[!]", colorRed))
+				fmt.Printf("%s Example: broadcast whoami\n", colorize("[*]", colorBlue))
+				fmt.Printf("%s Example: broadcast -f /path/to/script.sh\n", colorize("[*]", colorBlue))
+				return
+			}
+
+			ocGlobal.handleBroadcastCommand(command, osFilter, hostnameFilter, transportFilter, timeout, dryRun, wait, isScript, scriptExtension, outputFile)
+		},
+	}
+	rootCmd.AddCommand(broadcastCmd)
+
+	// results command - get command output by ID
+	resultsCmd := &cobra.Command{
+		Use:   "results <command_id>",
+		Short: "Get output from a command by its ID",
+		Long: `Retrieve the output from a previously executed command using its command ID.
+
+Command IDs are shown when executing broadcast commands or other async operations.`,
+		Example: `  results bc_a875fb30_5814
+  results bc_a875fb30_58a3`,
+		Run: func(cmd *cobra.Command, args []string) {
+			if len(args) == 0 {
+				fmt.Printf("%s Usage: results <command_id>\n", colorize("[!]", colorRed))
+				return
+			}
+			timeout, _ := cmd.Flags().GetInt32("timeout")
+			ocGlobal.handleGetResults(args[0], timeout)
+		},
+	}
+	resultsCmd.Flags().Int32("timeout", 5, "Timeout in seconds to wait for result")
+	rootCmd.AddCommand(resultsCmd)
 
 	// obfuscation command
 	obfuscationCmd := &cobra.Command{
