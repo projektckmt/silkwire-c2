@@ -1479,7 +1479,7 @@ func (oc *OperatorConsole) showGenerateHelp() {
 	fmt.Println("")
 	fmt.Printf("%s\n", colorize("Build Options:", colorCyan))
 	fmt.Printf("  %s %s       %s\n", colorize("--os, -o", colorYellow), colorize("<os>", colorMagenta), "Target OS (windows, linux, darwin)")
-	fmt.Printf("  %s %s   %s\n", colorize("--arch, -a", colorYellow), colorize("<arch>", colorMagenta), "Target architecture (amd64, 386, arm64)")
+	fmt.Printf("  %s %s   %s\n", colorize("--arch, -a", colorYellow), colorize("<arch>", colorMagenta), "Target architecture (amd64, 386, arm64, arm)")
 	fmt.Printf("  %s %s  %s\n", colorize("--format, -f", colorYellow), colorize("<fmt>", colorMagenta), "Output format (exe, dll, shellcode, service, source)")
 	fmt.Printf("  %s %s    %s\n", colorize("--save, -s", colorYellow), colorize("<dir>", colorMagenta), "Save to directory (default: ./)")
 	fmt.Printf("  %s %s %s\n", colorize("--timeout, -t", colorYellow), colorize("<sec>", colorMagenta), "Connection timeout in seconds")
