@@ -168,6 +168,7 @@ generate-implants:
 	@echo "Generating development implants..."
 	@mkdir -p generated/
 	GOOS=linux GOARCH=amd64 go build -ldflags "-X main.defaultServerAddr=localhost:8443" -o generated/implant-linux-amd64 ./implant
+	GOOS=linux GOARCH=arm GOARM=7 go build -ldflags "-X main.defaultServerAddr=localhost:8443" -o generated/implant-linux-arm7 ./implant
 	GOOS=windows GOARCH=amd64 go build -ldflags "-X main.defaultServerAddr=localhost:8443" -o generated/implant-windows-amd64.exe ./implant
 	GOOS=windows GOARCH=386 go build -ldflags "-X main.defaultServerAddr=localhost:8443" -o generated/implant-windows-386.exe ./implant
 	GOOS=darwin GOARCH=amd64 go build -ldflags "-X main.defaultServerAddr=localhost:8443" -o generated/implant-darwin-amd64 ./implant

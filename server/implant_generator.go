@@ -539,6 +539,10 @@ func (ig *ImplantGenerator) compileImplant(sourcePath string, config *ImplantCon
 
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GOOS=%s", config.OS))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GOARCH=%s", config.Arch))
+	// Set GOARM for 32-bit ARM builds (ARMv7)
+	if config.Arch == "arm" {
+		cmd.Env = append(cmd.Env, "GOARM=7")
+	}
 	// Clear GOFLAGS to avoid -mod=readonly interfering with dependency resolution
 	cmd.Env = append(cmd.Env, "GOFLAGS=")
 
