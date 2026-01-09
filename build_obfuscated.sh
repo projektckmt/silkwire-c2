@@ -335,6 +335,11 @@ echo "Created evasion stubs"
 echo -e "${YELLOW}[5/8] Building with obfuscation flags...${NC}"
 
 # Set build flags based on obfuscation level
+# Note: CGO_ENABLED=0 is set by the caller (implant generator) which produces
+# fully static binaries without glibc/libc dependencies. This ensures compatibility
+# with older Linux kernels and prevents segmentation faults from glibc mismatches.
+# Do NOT use -extldflags=-static (that's for external C linker when CGO is enabled).
+# Do NOT use -buildmode=pie (incompatible with CGO_ENABLED=0 on many platforms).
 BUILD_ID="obf$(date +%s)"
 case $OBFUSCATION_LEVEL in
     0)
@@ -347,16 +352,16 @@ case $OBFUSCATION_LEVEL in
         ;;
     2) 
         LDFLAGS="-s -w -X main.buildID=$BUILD_ID"
-        EXTRA_FLAGS="-trimpath -buildmode=pie"
+        EXTRA_FLAGS="-trimpath"
         ;;
     3)
-        LDFLAGS="-s -w -X main.buildID=$BUILD_ID -extldflags=-static"
-        EXTRA_FLAGS="-trimpath -buildmode=pie"
+        LDFLAGS="-s -w -X main.buildID=$BUILD_ID"
+        EXTRA_FLAGS="-trimpath"
         GCFLAGS='-gcflags="-N -l"'
         ;;
     4)
-        LDFLAGS="-s -w -X main.buildID=$BUILD_ID -extldflags=-static"
-        EXTRA_FLAGS="-trimpath -buildmode=pie"
+        LDFLAGS="-s -w -X main.buildID=$BUILD_ID"
+        EXTRA_FLAGS="-trimpath"
         GCFLAGS='-gcflags="-N -l -m"'
         ASMFLAGS="-asmflags=-trimpath"
         ;;
@@ -405,8 +410,10 @@ fi
 # Add output and source
 BUILD_CMD="$BUILD_CMD -o \"../$OUTPUT_NAME\" ."
 
-echo "Executing: GOOS=$GOOS GOARCH=$GOARCH $BUILD_CMD"
-eval "GOOS=$GOOS GOARCH=$GOARCH $BUILD_CMD"
+# CGO_ENABLED=0 ensures fully static binary without glibc dependencies
+# This is critical for compatibility with older Linux kernels
+echo "Executing: CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH $BUILD_CMD"
+eval "CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH $BUILD_CMD"
 
 cd ..
 

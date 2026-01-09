@@ -163,16 +163,20 @@ dev-setup: deps proto
 	@echo "Run 'make run-server' to start the server (CA will be auto-generated)"
 
 # Generate cross-platform implants (development builds)
+# Uses CGO_ENABLED=0 for fully static binaries without glibc dependencies
+# This ensures compatibility with older Linux kernels and avoids segfaults
 .PHONY: generate-implants
 generate-implants:
-	@echo "Generating development implants..."
+	@echo "Generating development implants (static, no glibc)..."
 	@mkdir -p generated/
-	GOOS=linux GOARCH=amd64 go build -ldflags "-X main.defaultServerAddr=localhost:8443" -o generated/implant-linux-amd64 ./implant
-	GOOS=linux GOARCH=arm GOARM=7 go build -ldflags "-X main.defaultServerAddr=localhost:8443" -o generated/implant-linux-arm7 ./implant
-	GOOS=windows GOARCH=amd64 go build -ldflags "-X main.defaultServerAddr=localhost:8443" -o generated/implant-windows-amd64.exe ./implant
-	GOOS=windows GOARCH=386 go build -ldflags "-X main.defaultServerAddr=localhost:8443" -o generated/implant-windows-386.exe ./implant
-	GOOS=darwin GOARCH=amd64 go build -ldflags "-X main.defaultServerAddr=localhost:8443" -o generated/implant-darwin-amd64 ./implant
-	@echo "Generated implants in generated/ directory"
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.defaultServerAddr=localhost:8443" -o generated/implant-linux-amd64 ./implant
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w -X main.defaultServerAddr=localhost:8443" -o generated/implant-linux-arm64 ./implant
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags "-s -w -X main.defaultServerAddr=localhost:8443" -o generated/implant-linux-arm7 ./implant
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.defaultServerAddr=localhost:8443" -o generated/implant-windows-amd64.exe ./implant
+	CGO_ENABLED=0 GOOS=windows GOARCH=386 go build -trimpath -ldflags "-s -w -X main.defaultServerAddr=localhost:8443" -o generated/implant-windows-386.exe ./implant
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.defaultServerAddr=localhost:8443" -o generated/implant-darwin-amd64 ./implant
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "-s -w -X main.defaultServerAddr=localhost:8443" -o generated/implant-darwin-arm64 ./implant
+	@echo "Generated static implants in generated/ directory"
 
 # Clean generated implants
 .PHONY: clean-generated

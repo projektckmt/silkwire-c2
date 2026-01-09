@@ -449,8 +449,10 @@ func (ig *ImplantGenerator) compileImplant(sourcePath string, config *ImplantCon
 
 		// Use garble for code obfuscation
 		args := []string{"build"}
-		// Force static compilation with rebuild of all packages
+		// Force rebuild of all packages for clean static build
 		args = append(args, "-a")
+		// Add -trimpath to remove build paths for smaller/cleaner binaries
+		args = append(args, "-trimpath")
 		// Build ldflags based on configuration
 		ldflags := ""
 		if config.Obfuscate {
@@ -463,13 +465,8 @@ func (ig *ImplantGenerator) compileImplant(sourcePath string, config *ImplantCon
 			}
 			ldflags += "-H windowsgui"
 		}
-		// Add static linking for non-Windows
-		if config.OS != "windows" {
-			if ldflags != "" {
-				ldflags += " "
-			}
-			ldflags += "-extldflags=-static"
-		}
+		// Note: With CGO_ENABLED=0, Go produces fully static binaries by default.
+		// No need for -extldflags=-static (that's for external C linker with CGO).
 		if ldflags != "" {
 			args = append(args, "-ldflags", ldflags)
 		}
@@ -479,8 +476,10 @@ func (ig *ImplantGenerator) compileImplant(sourcePath string, config *ImplantCon
 	} else {
 		// Use regular go build
 		args := []string{"build"}
-		// Force static compilation with rebuild of all packages
+		// Force rebuild of all packages for clean static build
 		args = append(args, "-a")
+		// Add -trimpath to remove build paths for smaller/cleaner binaries
+		args = append(args, "-trimpath")
 		// Build ldflags based on configuration
 		ldflags := ""
 		if config.Obfuscate {
@@ -493,13 +492,8 @@ func (ig *ImplantGenerator) compileImplant(sourcePath string, config *ImplantCon
 			}
 			ldflags += "-H windowsgui"
 		}
-		// Add static linking for non-Windows
-		if config.OS != "windows" {
-			if ldflags != "" {
-				ldflags += " "
-			}
-			ldflags += "-extldflags=-static"
-		}
+		// Note: With CGO_ENABLED=0, Go produces fully static binaries by default.
+		// No need for -extldflags=-static (that's for external C linker with CGO).
 		if ldflags != "" {
 			args = append(args, "-ldflags", ldflags)
 		}
@@ -546,7 +540,10 @@ func (ig *ImplantGenerator) compileImplant(sourcePath string, config *ImplantCon
 	// Clear GOFLAGS to avoid -mod=readonly interfering with dependency resolution
 	cmd.Env = append(cmd.Env, "GOFLAGS=")
 
-	// Force static compilation for all platforms to avoid glibc dependencies
+	// Force pure Go static compilation for all platforms.
+	// This produces binaries with zero glibc/libc dependencies, ensuring
+	// compatibility with older Linux kernels and avoiding segmentation faults
+	// caused by glibc version mismatches.
 	cmd.Env = append(cmd.Env, "CGO_ENABLED=0")
 
 	// If using garble, verify it's available (this was already checked during command creation)
@@ -742,42 +739,42 @@ func (ig *ImplantGenerator) convertToSharedLibrary(binaryPath string, config *Im
 			return "", fmt.Errorf("garble not found in PATH or GOPATH/bin")
 		}
 
-	args := []string{"build", "-buildmode=c-shared"}
-	ldflags := ""
-	if config.Obfuscate {
-		ldflags = "-s -w"
-	}
-	// Add Windows GUI subsystem flag to hide console window
-	if config.OS == "windows" {
-		if ldflags != "" {
-			ldflags += " "
+		args := []string{"build", "-buildmode=c-shared"}
+		ldflags := ""
+		if config.Obfuscate {
+			ldflags = "-s -w"
 		}
-		ldflags += "-H windowsgui"
-	}
-	if ldflags != "" {
-		args = append(args, "-ldflags", ldflags)
-	}
-	args = append(args, "-o", sharedLibPath, ".")
-	cmd = exec.Command(garblePath, args...)
-} else {
-	args := []string{"build", "-buildmode=c-shared"}
-	ldflags := ""
-	if config.Obfuscate {
-		ldflags = "-s -w"
-	}
-	// Add Windows GUI subsystem flag to hide console window
-	if config.OS == "windows" {
-		if ldflags != "" {
-			ldflags += " "
+		// Add Windows GUI subsystem flag to hide console window
+		if config.OS == "windows" {
+			if ldflags != "" {
+				ldflags += " "
+			}
+			ldflags += "-H windowsgui"
 		}
-		ldflags += "-H windowsgui"
-	}
-	if ldflags != "" {
-		args = append(args, "-ldflags", ldflags)
-	}
-	args = append(args, "-o", sharedLibPath, ".")
-	cmd = exec.Command("go", args...)
-}	// Set environment for cross-compilation
+		if ldflags != "" {
+			args = append(args, "-ldflags", ldflags)
+		}
+		args = append(args, "-o", sharedLibPath, ".")
+		cmd = exec.Command(garblePath, args...)
+	} else {
+		args := []string{"build", "-buildmode=c-shared"}
+		ldflags := ""
+		if config.Obfuscate {
+			ldflags = "-s -w"
+		}
+		// Add Windows GUI subsystem flag to hide console window
+		if config.OS == "windows" {
+			if ldflags != "" {
+				ldflags += " "
+			}
+			ldflags += "-H windowsgui"
+		}
+		if ldflags != "" {
+			args = append(args, "-ldflags", ldflags)
+		}
+		args = append(args, "-o", sharedLibPath, ".")
+		cmd = exec.Command("go", args...)
+	} // Set environment for cross-compilation
 	cmd.Dir = ig.outputDir
 	cmd.Env = os.Environ()
 
@@ -1092,7 +1089,10 @@ func (ig *ImplantGenerator) compileWithEnhancedObfuscation(sourcePath string, co
 	buildCmd.Env = append(os.Environ(),
 		fmt.Sprintf("GOOS=%s", config.OS),
 		fmt.Sprintf("GOARCH=%s", config.Arch),
-		"CGO_ENABLED=0", // Force static compilation for all platforms
+		// Force pure Go static compilation - no glibc/libc dependencies.
+		// This ensures compatibility with older Linux kernels and avoids
+		// segmentation faults from glibc version mismatches.
+		"CGO_ENABLED=0",
 	)
 
 	output, err := buildCmd.CombinedOutput()
